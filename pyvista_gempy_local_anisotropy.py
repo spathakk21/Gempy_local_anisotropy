@@ -5,9 +5,9 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+# import pyvista as pv
 
-
-# PyVista for Visualization
+# Integration of PyVista for 3D Visualization
 try:
     import pyvista as pv
     PYVISTA_AVAILABLE = True
@@ -18,15 +18,10 @@ except ImportError:
 import pyro
 import pyro.distributions as dist
 
-# --- CONSTANT FOR ANIMATION ---
-ANIMATION_FIGURE_ID = 42
-
 
 # for CI testing
 smoke_test = ('CI' in os.environ)
-# assert pyro.__version__.startswith('1.8.6')
 pyro.set_rng_seed(1)
-
 
 
 class grid:
@@ -76,7 +71,7 @@ class Gempy(grid):
         self.grid_status["Regular"]="Active"
         self.grid_status["Custom"] = None
         
-        self.a_T = 500
+        self.a_T = 5
         self.c_o_T = self.a_T**2/14/3
         self.s_1 = 0.01
         self.s_2 = 0.01
@@ -483,8 +478,6 @@ class Gempy(grid):
             grid_data_ = None
             
         
-       
-        
         self.scalar_field, self.results = self.Solution_grid(grid_coord=grid_data_)   
         self.solution={}
         self.solution["scalar_field"]= self.scalar_field
@@ -544,18 +537,16 @@ class Gempy(grid):
                 plt.quiver([self.Position_G[i,accepted_index[0]]],[self.Position_G[i,accepted_index[1]]],self.Value_G[i][accepted_index[0]],self.Value_G[i][accepted_index[1]],color='r')
         plt.savefig("Plot_2D.png")
         plt.close()
+
         # ----
         # plt.show()
-     
 
-        
+
     def plot_3D(self, data ,  value, plot_scalar_field = True, plot_input_data=True, section=None):
         
         import matplotlib.pyplot as plt
         from mpl_toolkits.mplot3d import Axes3D  # Needed for 3D plotting
-        
-        # ---
-        # fig = plt.figure(ANIMATION_FIGURE_ID)
+ 
 
         fig = plt.figure()
 
@@ -630,8 +621,8 @@ class Gempy(grid):
         # ---
         
         # plt.draw()
-        # plt.pause(0.05)
-
+        # plt.pause(0.05)    
+   
     def plot_data(self, sol, plot_scalar_field = True, plot_input_data=True):
         
         if self.grid_status["Regular"] is not None:
@@ -651,6 +642,7 @@ class Gempy(grid):
             else:
                 print("Since it is difficult to plot more than 3D for visualisation, provide the section along which you want to visualize to make it 2D or 3D plot")
                 
+
     def plot_data_section(self, section, plot_scalar_field = True, plot_input_data=True):
         
         if self.grid_status["Regular"] is not None:
@@ -704,8 +696,8 @@ class Gempy(grid):
                 
             else:
                 print("Provide a valid section")
-    ##### ---
-
+    
+    ########## ---            
     def get_section_grid(self, section):
         """Helper to generate grid points for a slice."""
         grid_hyperplane = []
@@ -728,11 +720,17 @@ class Gempy(grid):
         final_grid_coords = full_grid_hyp[:, columns_to_keep]
         
         return full_grid_hyp, final_grid_coords
-    
 
-    def plot_interactive_section(self):
+   
+    ##### ---
+    def plot_interactive_section(self, plot_input_data=True, only_surface_mode = False):
         """
         Creates an interactive 3D PyVista plot with a time slider 
+        'Args:
+        plot_input_data: if you want to view the interface points and gradient vectors - set it to True
+         
+        only_surface_mode: if you want to view only the contoured surface with the input points, no point cloud - set it to True
+        
         """
         if not PYVISTA_AVAILABLE:
             print("PyVista is required for interactive plotting.")
@@ -752,7 +750,7 @@ class Gempy(grid):
         # Generates the grid points for the initial frame
         full_grid_hyp, final_grid = self.get_section_grid(current_section)
         
-        # Pre-compute weights once!
+        ##Pre-compute weights if missing ##
         # This ensures the slider is fast because we don't invert the matrix every frame
         if not hasattr(self, 'w'):
             self.Ge_model() 
@@ -769,16 +767,20 @@ class Gempy(grid):
         # Rounds float results to integers (Rock IDs)
         values = torch.round(results['Regular']).numpy()
         
-        # Create PyVista Mesh
+        # Create PyVista Mesh - point cloud
         mesh = pv.PolyData(points)
         # attaching rock id to mesh
         mesh["Lithology"] = values
         
         # Visualization window
         plotter = pv.Plotter(window_size=[1024, 768])
-        plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
+
+
+        if only_surface_mode is False:
+
+            plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
                          point_size=5, render_points_as_spheres=True, opacity=0.5,
-                         show_scalar_bar=False, label="Geological Grid")
+                         show_scalar_bar=False,label="Geological Grid")
 
         # #########################
         # ADDING LEGEND 
@@ -815,10 +817,85 @@ class Gempy(grid):
         plotter.show_grid()
 
 
-        ###### Define Callback #########
+        ####################################################################
+        ################ For Contouring the interface ######################
+        ####################################################################
+
+
+        # using pyvista structure grid - to get connected gird
+
+        # Grid dimensions from resolution of Gempy model
+        nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
+        
+        vol_grid = pv.StructuredGrid()
+        vol_grid.points = points
+        vol_grid.dimensions = [nx, ny, nz] 
+
+        # Assign the rock IDs to the every point in volume
+        vol_grid["Lithology"] = values
+
+
+        # Generate Initial Contours
+        # Taking surfaces at 1.5, 2.5, etc. (The boundary between ID 1 and 2)
+        max_layer_val = values.max()
+        contour_levels = [i + 0.5 for i in range(1, int(max_layer_val) + 1)]
+        #####  contour_levels = [1.5, 2.5, 3.5, ......]
+
+        # Calculating contour surface between two rocks 
+        # interfaces is the new mesh object
+        interfaces = vol_grid.contour(isosurfaces=contour_levels)
+
+        # Adding contours to the plotter
+        interface_actor = plotter.add_mesh(interfaces, color="white", opacity=0.7, label="Interface")
+
+        ##########################################################################
+                        # PLOTTING INPUT DATA #
+        ##########################################################################
+
+        if plot_input_data:
+            input_colours = ["red", "blue", "green"]
+
+            i = 0
+            for _, coords in self.sp_coord.items():
+                if coords.shape[1] > 3:
+                     # Remove 4th dimension (Time) for plotting location
+                    valid_coords = coords[:,[0,1,2]].numpy()
+                else:
+                    valid_coords = coords.numpy()
+
+                c = input_colours[i % len(input_colours)]
+                
+                plotter.add_points(valid_coords, color=c, point_size=12, 
+                                   render_points_as_spheres=True, label=f"Input: {key}")
+                i += 1
+
+            ######## ADDING GRADIENT ARROWS #########
+
+            if hasattr(self, 'Position_G') and hasattr(self, 'Value_G'):
+                # Extract XYZ for positions
+                pos_g = self.Position_G[:, [0, 1, 2]].numpy() if self.Position_G.shape[1] > 3 else self.Position_G.numpy()
+                
+                # Extract XYZ for vectors (ignoring Time component of the vector if it exists)
+                vec_g = self.Value_G[:, [0, 1, 2]].numpy() if self.Value_G.shape[1] > 3 else self.Value_G.numpy()
+                
+                # Create PyVista Arrow object
+                arrows = pv.PolyData(pos_g)
+                arrows["vectors"] = vec_g
+                # "Glyph" filters scale geometry (arrows) at every point
+                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.4)
+                
+                plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
+
+    
+
+        ###### Callback for time slider #######
+
         def on_slider_change(t_value):
 
-            ''' value is the new Time t.'''
+            ''' Value is the new Time t.'''
+
+            # old contour variable
+            nonlocal interface_actor         #Allow updating the contour variable
 
             # Update section
             new_section = {slider_dim: t_value}
@@ -831,16 +908,37 @@ class Gempy(grid):
             
             # Re-calculates lithology for new points and (Fast, weights are solved already)
             _, new_result = self.Solution_grid(grid_coord=new_full_grid, section_plot=True, recompute_weights=False)
+            new_values = torch.round(new_result['Regular']).numpy()
             
             # Updates the colors on the existing mesh
             mesh["Lithology"] = torch.round(new_result['Regular']).numpy()
+
+
+            # ###Update Contours ###
+
+
+            # Update the volume grid data
+            vol_grid.points = final_grid.numpy() 
+
+            #  Updates the grid with the new Rock IDs calculated for the new Time (t)
+            vol_grid["Lithology"] = new_values   
+            
+            # Recalculate the new contour surface
+            new_interfaces = vol_grid.contour(isosurfaces=contour_levels)
+            
+            # Swap the actor in the scene - removes the old contour surface as we change t
+            plotter.remove_actor(interface_actor)
+
+            # checks if there are boundaries to draw or not
+            if new_interfaces.n_points > 0:
+                interface_actor = plotter.add_mesh(new_interfaces, color="white", opacity=0.7)
 
 
             return
 
         # Add Slider
         plotter.add_slider_widget(on_slider_change, [t_min, t_max], 
-                                  title=f"T Dimension",
+                                  title=f"T Evolution",
                                   pointa=(0.65, 0.90), # start of slider
                                   pointb=(0.95, 0.90), # end of slider
                                   color="black")
@@ -849,29 +947,8 @@ class Gempy(grid):
         plotter.show()
 
 def main():        
-
-    # One flat layer
-    # Transformation_matrix = torch.diag(torch.tensor([1,1,1,0],dtype=torch.float32))
-
-    # gp = Gempy("Gempy_test", 
-    #            extent=[0,1000,100,900,0,600, -0.5,4.5],
-    #             resolution=[50, 50, 50, 50]
-    #            )
-
-    # interface_data={"Rock 1": torch.tensor([
-    # [100,200,400, 0],
-    # [500,200,400, 0],
-    # [900,200,400, 0],
-    # [100,800,400, 0],
-    # [500,800,400, 0],
-    # [900,800,400, 0],
-    # ])}
     
-    # orientation_data ={"Positions": torch.tensor([
-    #     [500,	200,	400, 0],
-    #     [500,	500,	400, 0]
-    # ]), "Values": torch.tensor([[0,0,1,0], [0,0,1,0]])}
-    
+    # Random example of flattening of a single fold
 
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
@@ -952,17 +1029,40 @@ def main():
     #gp.activate_grid("Regular")
     gp.active_grid()
     sol = gp.Solution()
-    #print(sol)
-    #gp.plot_data(sol=sol, plot_scalar_field= True, plot_input_data=True)
+
+    #########################################################################
+    ###### Uncomment the below code lines for matplotlib visualization ######
+    #########################################################################
+
+    ##### FOR 2D matplotlib #####
     # import time
     # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
     #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
     #     time.sleep(1)
- 
-     # ##### Interactive Visualization #####
+
+
+    ##### FOR 3D matplotlib #####
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
+
+
+    #############################################################################################
+    ########## Uncomment below for  Interactive Visualization Pyvista below  ####################
+    #############################################################################################
     
-    print("\nStarting Interactive Visualization...")
-    gp.plot_interactive_section()
+    
+    
+
+    ###############################################################
+    ########### show/unshow input data using "plot_input_data" argument
+    ########### show/unshow surface or interfaces using "only_surface_mode" argument
+    ###############################################################
+
+    # print("\nStarting Interactive Visualization...")
+    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+
 
 if __name__ == "__main__":
     main()
