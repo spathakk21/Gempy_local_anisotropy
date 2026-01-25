@@ -299,7 +299,7 @@ class Gempy(grid):
         
         ## defining the dips position
         self.Position_G = self.op_coord["Positions"].to(self.dtype) # Location where Dips or gradient are given
-        self.Value_G    = self.op_coord["Values"].to(self.dtype) @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
+        self.Value_G    = self.op_coord["Values"].to(self.dtype)    # @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
        
         n= self.Position_G.shape[0] # Total number of points available for gradient or dips
         k = self.Position_G[0].shape[0] # Total number of component available for the gradient

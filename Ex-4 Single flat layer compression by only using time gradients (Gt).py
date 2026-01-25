@@ -307,7 +307,7 @@ class Gempy(grid):
         
         ## defining the dips position
         self.Position_G = self.op_coord["Positions"].to(self.dtype) # Location where Dips or gradient are given
-        self.Value_G    = self.op_coord["Values"].to(self.dtype) @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
+        self.Value_G    = self.op_coord["Values"].to(self.dtype)    # @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
        
         n= self.Position_G.shape[0] # Total number of points available for gradient or dips
         k = self.Position_G[0].shape[0] # Total number of component available for the gradient
@@ -950,12 +950,12 @@ def main():
     
     ##################### EXAMPLE - 4 #######################################
     ################ Single flat layer compression by only using time gradient (Gt)  #########
-    ############ Just giving the rate at which flat surface moves (upwards at fold hinge - center of fold and donwards at edges) ###########
+    ############ Just giving the rate at which points on the flat surface moves (upwards at fold hinge - center of fold) and (donwards at edges of flat surface) ###########
 
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
     gp = Gempy("Gempy_test", 
-               extent=[-0.2,2.2,-0.2,2.2,-0.2,2.2, 0,10],
+               extent=[-0.2,2.2,-0.2,2.2,-0.2,2.2, 0,5],
                 resolution=[50, 50, 50, 2]
                )
 
@@ -1050,19 +1050,19 @@ def main():
 
 
     ## ANTIFORM
-    [0.0, 0.0, 1.0,-3.0], # I want center of layer to move fast in up direction
+    [0.0, 0.0, 1.0,-.30], # I want center of layer to move fast in up direction
 
-    [0.0, 0.0, 1.0,-2.5],
-    [ 0.0 ,0.0, 1.0,-2.5],
+    [0.0, 0.0, 1.0,-0.25],
+    [ 0.0 ,0.0, 1.0,-0.25],
 
-    [0., 0.0, 1.,-2.0],
-    [ 0., 0.0, 1.0,-2.0],
+    [0., 0.0, 1.0,-0.20],
+    [ 0., 0.0, 1.0,-0.20],
 
-    [0., 0.0, 1.0,-1.5],
-    [ 0., 0.0, 1.0,-1.5],
+    [0., 0.0, 1.0,-0.15],
+    [ 0., 0.0, 1.0,-0.15],
 
-    [0., 0.0, 1.0, 3.0], # I want edges of layer to move fast in down direction
-    [ 0., 0.0, 1.0, 3.0],
+    [0., 0.0, 1.0, 0.30], # I want edges of layer to move fast in down direction
+    [ 0., 0.0, 1.0, 0.30],
 
 
 
@@ -1071,19 +1071,19 @@ def main():
     ### SYNFORM
 
 
-    [0.0, 0.0, 1.0,3.0],
+    [0.0, 0.0, 1.0,.30], 
 
-    [0.0, 0.0, 1.0,2.5],
-    [ 0.0 ,0.0, 1.0,2.5],
+    [0.0, 0.0, 1.0,0.25],
+    [ 0.0 ,0.0, 1.0,0.25],
 
-    [0., 0.0, 1.,2.0],
-    [ 0., 0.0, 1.0,2.0],
+    [0., 0.0, 1.0,0.20],
+    [ 0., 0.0, 1.0,0.20],
 
-    [0., 0.0, 1.0,1.5],
-    [ 0., 0.0, 1.0,1.5],
+    [0., 0.0, 1.0,0.15],
+    [ 0., 0.0, 1.0,0.15],
 
-    [0., 0.0, 1.0,-3.0],
-    [ 0., 0.0, 1.0,-3.0],
+    [0., 0.0, 1.0, -0.30], 
+    [ 0., 0.0, 1.0, -0.30],
 ])}
 
     gp.interface_data(interface_data)

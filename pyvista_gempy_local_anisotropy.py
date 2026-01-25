@@ -307,7 +307,7 @@ class Gempy(grid):
         
         ## defining the dips position
         self.Position_G = self.op_coord["Positions"].to(self.dtype) # Location where Dips or gradient are given
-        self.Value_G    = self.op_coord["Values"].to(self.dtype) @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
+        self.Value_G    = self.op_coord["Values"].to(self.dtype)     # @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
        
         n= self.Position_G.shape[0] # Total number of points available for gradient or dips
         k = self.Position_G[0].shape[0] # Total number of component available for the gradient
@@ -953,7 +953,7 @@ def main():
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
     gp = Gempy("Gempy_test", 
-               extent=[-0.4,1.2,-0.4,1.2,-0.4,1.2, 0,10],
+               extent=[-0.4,1.2,-0.4,1.2,-0.4,1.2, 0,5],
                 resolution=[50, 50, 50, 2]
                )
 
@@ -998,19 +998,19 @@ def main():
     ]) / 1000, 
     
     "Values": torch.tensor([
-        [0.0, 0.0, 1.0, 3.0],       
+        [0.0, 0.0, 1.0, 0.30],       
         
-        [-0.866, 0.0, 0.5, 2.5],    
-        [ 0.866, 0.0, 0.5, 2.5],    
+        [-0.866, 0.0, 0.5, 0.25],    
+        [ 0.866, 0.0, 0.5, 0.25],    
         
-        [-0.707, 0.0, 0.707, 2.0],  
-        [ 0.707, 0.0, 0.707, 2.0], 
+        [-0.707, 0.0, 0.707, 0.20],  
+        [ 0.707, 0.0, 0.707, 0.20], 
         
-        [-0.5, 0.0, 0.866, 1.5],    
-        [ 0.5, 0.0, 0.866, 1.5],   
+        [-0.5, 0.0, 0.866, 0.15],    
+        [ 0.5, 0.0, 0.866, 0.15],   
         
-        [-0.174, 0.0, 0.985, 1.0],  
-        [ 0.174, 0.0, 0.985, 1.0]   
+        [-0.174, 0.0, 0.985, 0.10],  
+        [ 0.174, 0.0, 0.985, 0.10]   
     ])}
 
     gp.interface_data(interface_data)
@@ -1035,10 +1035,10 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -1057,8 +1057,8 @@ def main():
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
-    print("\nStarting Interactive Visualization...")
-    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    # print("\nStarting Interactive Visualization...")
+    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
 
 if __name__ == "__main__":
