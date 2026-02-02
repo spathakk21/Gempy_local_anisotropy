@@ -1165,7 +1165,7 @@ def main():
     # OBSERVATION - Trade-off between both basis and covariance ###############
 
     ## OBSERVATION -  After some time t =4-5 the structure starts to move in oppositse sense of direction is it due to the
-    #### t^2, z^2, x^2, etc term in basis polynomial (parabola behaviour)
+    #### t^2, z^2, x^2, etc term in basis polynomial (parabola/quadratic behaviour)
 
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.5],dtype=torch.float32))
     gp = Gempy("Gempy_test", 
