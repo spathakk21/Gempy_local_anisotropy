@@ -486,15 +486,16 @@ class Gempy(grid):
         F_vals_ref, _ = self.set_evaluate_basis(self.ref_layer_points, active_dims=active_dimensions)
         F_interface = -F_vals_rest + F_vals_ref 
         
-        print(f"The gradient comp of F matrix is:{F_gradients}")
+        # print(f"The gradient comp of F matrix is:{F_gradients}")
 
-        print(f"The interface comp of F matrix is:{F_interface}")
+        # print(f"The interface comp of F matrix is:{F_interface}")
         
         # Finalizing F_matrix
         F_matrix = torch.cat([F_gradients, F_interface], dim=1)
         self.F_matrix = F_matrix 
         
-        print(f"The F matrix is:{F_matrix}")
+        # print(f"The F matrix is:{F_matrix}")
+
         # Augment K for solving
         ###### [C  F']
         ###### [F  0 ]
@@ -509,7 +510,7 @@ class Gempy(grid):
         zeros_b = torch.zeros(L, 1)
         b_aug = torch.cat([b, zeros_b], dim=0)
         
-        print(f"The RHS b vector is: {b_aug}")
+        # print(f"The RHS b vector is: {b_aug}")
 
         # Solve
         # w contains --> weights Covariance term(gradients and interface) and coefficients of basis term
@@ -543,13 +544,13 @@ class Gempy(grid):
         # w_dual (gradient and interface) Covariance weights
         # mu = coefficients of basis polynomial for given dataset
         w_dual = self.w[:-self.num_basis_terms]
-        print(f"All wegihts excluding basis coefficients are: {w_dual}")
-        print(w_dual.shape)
+        # print(f"All wegihts excluding basis coefficients are: {w_dual}")
+        # print(w_dual.shape)
 
 
         mu = self.w[-self.num_basis_terms:]
-        print(f"Basis coefficients are: {mu}")
-        print(mu.shape)
+        # print(f"Basis coefficients are: {mu}")
+        # print(mu.shape)
 
         # print(mu)
 
@@ -1156,78 +1157,20 @@ class Gempy(grid):
         plotter.show()
 
 def main():        
-    
-    # Random example of flattening of a single fold
-
-    # Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
-
-    # gp = Gempy("Gempy_test", 
-    #            extent=[-0.4,1.2,-0.4,1.2,-0.4,1.2, 0,5],
-    #             resolution=[50, 50, 50, 2]
-    #            )
 
 
-    # interface_data={"Rock 1": torch.tensor([
-    #     [0.0, 100.0, 200.0, 0.0],
-    #     [0.0, 500.0, 200.0, 0.0],
-    #     [0.0, 900.0, 200.0, 0.0],
-    #     [400.0, 100.0, 600.0, 0.0],
-    #     [400.0, 500.0, 600.0, 0.0],
-    #     [400.0, 900.0, 600.0, 0.0],
-    #     [200.0, 100.0, 400.0, 0.0],
-    #     [200.0, 500.0, 400.0, 0.0],
-    #     [200.0, 900.0, 400.0, 0.0],
-    #     [800.0, 100.0, 400.0, 0.0],
-    #     [800.0, 500.0, 400.0, 0.0],
-    #     [800.0, 900.0, 400.0, 0.0],
-    #     [600.0, 100.0, 600.0, 0.0],
-    #     [600.0, 500.0, 600.0, 0.0],
-    #     [600.0, 900.0, 600.0, 0.0],
-    #     [1000.0, 100.0, 200.0, 0.0],
-    #     [1000.0, 500.0, 200.0, 0.0],
-    #     [1000.0, 900.0, 200.0, 0.0]
-    # ])/1000}
+    ############### CHECKING BASIS FUNCION IMPLEMENTATION ################
+
+    ## EXAMPLE - 1 -- Flattening two folds (artificial dataset - less gradient info)
+    ## OBSERVATION: Was fitting good with the parabola equation --> basis dominant + covariance weights were very low
 
 
-    # orientation_data ={"Positions": torch.tensor([
-    #     [500.0, 500.0, 620.0, 0], # Fold Hinge 
-        
-    #     [300.0, 500.0, 500.0, 0],
-    #     [700.0, 500.0, 500.0, 0], 
-
-    #     [200.0, 500.0, 400.0, 0], 
-    #     [800.0, 500.0, 400.0, 0],
-
-    #     [100.0, 500.0, 300.0, 0], 
-    #     [900.0, 500.0, 300.0, 0],
-
-    #     [0.0, 500.0, 200.0, 0],   # Edge
-    #     [1000.0, 500.0, 200.0, 0]
-
-    # ]) / 1000, 
-    
-    # "Values": torch.tensor([
-    #     [0.0, 0.0, 1.0, 0.30],       
-        
-    #     [-0.866, 0.0, 0.5, 0.25],    
-    #     [ 0.866, 0.0, 0.5, 0.25],    
-        
-    #     [-0.707, 0.0, 0.707, 0.20],  
-    #     [ 0.707, 0.0, 0.707, 0.20], 
-        
-    #     [-0.5, 0.0, 0.866, 0.15],    
-    #     [ 0.5, 0.0, 0.866, 0.15],   
-        
-    #     [-0.174, 0.0, 0.985, 0.10],  
-    #     [ 0.174, 0.0, 0.985, 0.10]   
-    # ])}
-
-    #### CHECKING BASIS FUNCION IMPLEMENTATION
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.5],dtype=torch.float32))
     gp = Gempy("Gempy_test", 
-               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, -0.5, 5],
+               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, -0.5, 10],
                 resolution=[100, 20, 100, 2]
                )
+
 
     interface_data={"Fold 1": torch.tensor([
         [0.0,    500.0, 200.0, 0.0],  # Left Base
@@ -1310,6 +1253,5 @@ def main():
     # print("\nStarting Interactive Visualization...")
     # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
-    
 if __name__ == "__main__":
     main()
