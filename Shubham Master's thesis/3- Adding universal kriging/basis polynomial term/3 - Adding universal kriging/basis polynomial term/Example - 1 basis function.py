@@ -127,21 +127,49 @@ class Gempy(grid):
     
     
     def covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         r_by_at = r/self.a_T
         C_r = self.c_o_T *( 1 - 7 * (r_by_at)**2 + 8.75 * (r_by_at)**3 - 3.5 * (r_by_at)**5 + 0.75 * (r_by_at)**7)
+        
+        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero
+        C_r = torch.where(condition, C_r, 0.0)
         return C_r
     
     def first_derivative_covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash =self.c_o_T *( - 14 * (r/self.a_T**2) + 105/4 * (r**2/self.a_T**3) - 35/2 * (r**4/self.a_T**5) + 21/4 * (r**6/self.a_T**7))
         # C_r_dash =self.c_o_T *( - 14 * (r_by_at)**2 + 105/4 * (r_by_at)**3 - 35/2 * (r_by_at)**5 + 21/4 * (r_by_at)**7)/ r
+        
+        ##
+        C_r_dash = torch.where(condition, C_r_dash, 0.0)
+        
         return C_r_dash
     
     def first_derivative_covariance_function_divided_by_r(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash_by_r = self.c_o_T *( - 14 / ((self.a_T)**2) + 105/4 * (r/(self.a_T)**3) - 35/2 * (r**3/(self.a_T)**5) + 21/4 * (r**5/(self.a_T)**7))
+        
+        ##
+        C_r_dash_by_r = torch.where(condition, C_r_dash_by_r, 0.0)
+        
         return C_r_dash_by_r
     
     def second_derivative_covariance_function(self,r):
+
+        condition = r <=self.a_T
+
         C_r_dash_dash =self.c_o_T * 7 * (9 * r ** 5 - 20 * self.a_T ** 2 * r ** 3 + 15 * self.a_T ** 4 * r - 4 * self.a_T ** 5) / (2 * self.a_T ** 7)
+        
+        ##
+        C_r_dash_dash = torch.where(condition, C_r_dash_dash, 0.0)
+
+        
         return C_r_dash_dash
 
     def squared_euclidean_distance(self, x_1,x_2):
@@ -1161,113 +1189,50 @@ def main():
 
     ############### CHECKING BASIS FUNCION IMPLEMENTATION ################
 
-    ################## EXAMPLE - 3 : Flattening two folds (more gradient info)
-    # OBSERVATION - Trade-off between both basis and covariance ###############
+    ## EXAMPLE - 1 -- Flattening two folds (artificial dataset - less gradient info)
+    ## OBSERVATION: Was fitting good with the parabola equation --> basis dominant + covariance weights were very low
 
-    ## OBSERVATION -  After some time t =4-5 the structure starts to move in oppositse sense of direction is it due to the
-    #### t^2, z^2, x^2, etc term in basis polynomial (parabola/quadratic behaviour)?
 
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.5],dtype=torch.float32))
     gp = Gempy("Gempy_test", 
                extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, -0.5, 10],
                 resolution=[100, 20, 100, 2]
                )
-    
-    interface_data = {
-        "Fold 1": torch.tensor([
-            [500.0, 500.0, 620.0, 0.0],  # Hinge
-            [300.0, 1200.0, 500.0, 0.0],  # Left Steep
-            [700.0, 1200.0, 500.0, 0.0],  # Right Steep
-            [200.0, 900.0, 400.0, 0.0],  # Left Mid
-            [800.0, 900.0, 400.0, 0.0],  # Right Mid
-            [100.0, 500.0, 300.0, 0.0],  # Left Lower
-            [900.0, 500.0, 300.0, 0.0],  # Right Lower
-            [0.0,   100.0, 200.0, 0.0],  # Left Edge
-            [1000.0,100.0, 200.0, 0.0]   # Right Edge
-        ]) / 1000,
 
-        "Fold 2": torch.tensor([
-            # Shifted UP by 200m (Z + 200)
-            [500.0, 500.0, 820.0, 0.0],  # Hinge
-            [300.0, 1200.0, 700.0, 0.0],
-            [700.0, 1200.0, 700.0, 0.0],
-            [200.0, 900.0, 600.0, 0.0],
-            [800.0, 900.0, 600.0, 0.0],
-            [100.0, 500.0, 500.0, 0.0],
-            [900.0, 500.0, 500.0, 0.0],
-            [0.0,   100.0, 400.0, 0.0],
-            [1000.0,100.0, 400.0, 0.0]
-        ]) / 1000
-    }
 
-    orientation_data = {
-        "Positions": torch.tensor([
-            # --- Fold 1 (Bottom) ---
-            [500.0, 500.0, 620.0, 100],    # Hinge
-            
-            [300.0, 500.0, 500.0, 0],    # Left Steep
-            [700.0, 500.0, 500.0, 0],    # Right Steep
+    interface_data={"Fold 1": torch.tensor([
+        [0.0,    500.0, 200.0, 0.0],  # Left Base
+        [400.0,  600.0, 600.0, 0.0],  # Left Hinge Top
+        [600.0,  700.0, 600.0, 0.0],  # Right Hinge Top
+        [1000.0, 500.0, 200.0, 0.0]   # Right Base
+    ]) / 1000,
 
-            [200.0, 500.0, 400.0, 0],    # Left Mid
-            [800.0, 500.0, 400.0, 0],    # Right Mid
+    "Fold 2": torch.tensor([
+        [0.0,    500.0, 400.0, 0.0],  # Left Base
+        [400.0,  600.0, 800.0, 0.0],  # Left Hinge Top
+        [600.0,  700.0, 800.0, 0.0],  # Right Hinge Top
+        [1000.0, 500.0, 400.0, 0.0]   # Right Base
+    ]) / 1000}
 
-            [100.0, 500.0, 300.0, 0],    # Left Lower
-            [900.0, 500.0, 300.0, 0],    # Right Lower
+    orientation_data ={"Positions": torch.tensor([
+        # --- Fold 1 (Bottom) ---
+        [200.0, 500.0, 400.0, 100],   
+        [800.0, 500.0, 400.0, 0],   
 
-            [0.0,   500.0, 200.0, 0],    # Left Edge
-            [1000.0,500.0, 200.0, 0],    # Right Edge
-            
-            # --- Fold 2 (Top) ---
-            # Identical X, Shifted Z (+200)
-            [500.0, 500.0, 820.0, 0], 
-            
-            [300.0, 500.0, 700.0, 0],
-            [700.0, 500.0, 700.0, 0],
+        # --- Fold 2 (Top) ---
+        [200.0, 500.0, 600.0, 0],   
+        [800.0, 500.0, 600.0, 0]    
+    ]) / 1000,
 
-            [200.0, 500.0, 600.0, 0],
-            [800.0, 500.0, 600.0, 0],
+    "Values": torch.tensor([
+        # --- Fold 1 Gradients ---
+        [-0.707, 0.0, 0.707, 0.05], 
+        [ 0.707, 0.0, 0.707, 0.05], 
 
-            [100.0, 500.0, 500.0, 0],
-            [900.0, 500.0, 500.0, 0],
-
-            [0.0,   500.0, 400.0, 0],
-            [1000.0,500.0, 400.0, 0]
-
-        ]) / 1000,
-
-        "Values": torch.tensor([
-            # --- Fold 1 Gradients ---
-            [0.0,    0.0, 1.0,   0.30],  # Hinge (Flat)
-            
-            [-0.866, 0.0, 0.5,   0.25],  # Left Steep (60 deg)
-            [ 0.866, 0.0, 0.5,   0.25],  # Right Steep
-            
-            [-0.707, 0.0, 0.707, 0.20],  # Left Mid (45 deg)
-            [ 0.707, 0.0, 0.707, 0.20],  # Right Mid
-            
-            [-0.5,   0.0, 0.866, 0.15],  # Left Lower (30 deg)
-            [ 0.5,   0.0, 0.866, 0.15],  # Right Lower
-            
-            [-0.174, 0.0, 0.985, 0.10],  # Left Edge (10 deg)
-            [ 0.174, 0.0, 0.985, 0.10],  # Right Edge
-
-            # --- Fold 2 Gradients (Identical to Fold 1) ---
-            [0.0,    0.0, 1.0,   0.30],  
-            
-            [-0.866, 0.0, 0.5,   0.25],  
-            [ 0.866, 0.0, 0.5,   0.25],  
-            
-            [-0.707, 0.0, 0.707, 0.20],  
-            [ 0.707, 0.0, 0.707, 0.20], 
-            
-            [-0.5,   0.0, 0.866, 0.15],  
-            [ 0.5,   0.0, 0.866, 0.15],  
-            
-            [-0.174, 0.0, 0.985, 0.10],  
-            [ 0.174, 0.0, 0.985, 0.10]   
-        ])
-    }
-
+        # --- Fold 2 Gradients ---
+        [-0.707, 0.0, 0.707, 0.05], 
+        [ 0.707, 0.0, 0.707, 0.05]  
+    ])}
 
     gp.interface_data(interface_data)
     gp.orientation_data(orientation_data)
@@ -1291,17 +1256,17 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75]:
-        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     #############################################################################################
@@ -1316,6 +1281,5 @@ def main():
     # print("\nStarting Interactive Visualization...")
     # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
-    
 if __name__ == "__main__":
     main()

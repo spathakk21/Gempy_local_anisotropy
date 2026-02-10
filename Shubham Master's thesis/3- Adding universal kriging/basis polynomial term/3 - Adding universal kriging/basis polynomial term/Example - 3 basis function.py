@@ -127,21 +127,49 @@ class Gempy(grid):
     
     
     def covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         r_by_at = r/self.a_T
         C_r = self.c_o_T *( 1 - 7 * (r_by_at)**2 + 8.75 * (r_by_at)**3 - 3.5 * (r_by_at)**5 + 0.75 * (r_by_at)**7)
+        
+        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero
+        C_r = torch.where(condition, C_r, 0.0)
         return C_r
     
     def first_derivative_covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash =self.c_o_T *( - 14 * (r/self.a_T**2) + 105/4 * (r**2/self.a_T**3) - 35/2 * (r**4/self.a_T**5) + 21/4 * (r**6/self.a_T**7))
         # C_r_dash =self.c_o_T *( - 14 * (r_by_at)**2 + 105/4 * (r_by_at)**3 - 35/2 * (r_by_at)**5 + 21/4 * (r_by_at)**7)/ r
+        
+        ##
+        C_r_dash = torch.where(condition, C_r_dash, 0.0)
+        
         return C_r_dash
     
     def first_derivative_covariance_function_divided_by_r(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash_by_r = self.c_o_T *( - 14 / ((self.a_T)**2) + 105/4 * (r/(self.a_T)**3) - 35/2 * (r**3/(self.a_T)**5) + 21/4 * (r**5/(self.a_T)**7))
+        
+        ##
+        C_r_dash_by_r = torch.where(condition, C_r_dash_by_r, 0.0)
+        
         return C_r_dash_by_r
     
     def second_derivative_covariance_function(self,r):
+
+        condition = r <=self.a_T
+
         C_r_dash_dash =self.c_o_T * 7 * (9 * r ** 5 - 20 * self.a_T ** 2 * r ** 3 + 15 * self.a_T ** 4 * r - 4 * self.a_T ** 5) / (2 * self.a_T ** 7)
+        
+        ##
+        C_r_dash_dash = torch.where(condition, C_r_dash_dash, 0.0)
+
+        
         return C_r_dash_dash
 
     def squared_euclidean_distance(self, x_1,x_2):
@@ -294,7 +322,7 @@ class Gempy(grid):
     ##############################################################################
     ########### SETTING BASIS FUNCTION FOR ADDING TREND TO THE MEAN ###############
     ##############################################################################
-    def set_evaluate_basis(self, x, active_dims=[0, 1, 2]):
+    def set_evaluate_basis(self, x, active_dims=[0, 1, 2, 3]):
         """
         Calculates the F matrix -- which represents polynomial trend of mean at data points
         Args:
@@ -366,13 +394,9 @@ class Gempy(grid):
             grads_list.append(grad)
 
         # Stack Results
-        if vals_list:
-            F_vals = torch.stack(vals_list, dim=0)  # Shape: (N_terms, N)
-            F_grads = torch.stack(grads_list, dim=0) # Shape: (N_terms, N, dim)
-        else:
-            # Fallback for empty active_dims
-            F_vals = torch.zeros(0, N, dtype=self.dtype)
-            F_grads = torch.zeros(0, N, dim, dtype=self.dtype)
+        
+        F_vals = torch.stack(vals_list, dim=0)  # Shape: (N_terms, N)
+        F_grads = torch.stack(grads_list, dim=0) # Shape: (N_terms, N, dim)
 
         return F_vals, F_grads
 
@@ -454,7 +478,7 @@ class Gempy(grid):
 
         # Set on which variables I want basis to be applied
         # [0,1,2] means [x,y,z]
-        active_dimensions = [0,1,2,3] 
+        active_dimensions = [0,1,2] 
 
         # Calculating Basis at Gradient Points
         _, dF_grad = self.set_evaluate_basis(self.Position_G, active_dims=active_dimensions) 
@@ -471,7 +495,8 @@ class Gempy(grid):
         
         k_dim = self.Position_G.shape[1] # Total number of component available for the gradient
         # print(k_dim)
-        
+      
+
         # Initialize matrix for storing F_grad
         F_gradients = torch.zeros(L, n_grad_pts * k_dim)
         
@@ -481,14 +506,15 @@ class Gempy(grid):
             end_col = (u + 1) * n_grad_pts
             F_gradients[:, start_col:end_col] = dF_grad[:, :, u]
 
-        # Calcumating Basis function value at Interface Points
+    
+
+        ########### Calculating Basis function value at Interface Points ######################
+
+        # Using (reference - rest) for all the layers
         F_vals_rest, _ = self.set_evaluate_basis(self.rest_layer_points,active_dims=active_dimensions)
         F_vals_ref, _ = self.set_evaluate_basis(self.ref_layer_points, active_dims=active_dimensions)
         F_interface = -F_vals_rest + F_vals_ref 
-        
-        # print(f"The gradient comp of F matrix is:{F_gradients}")
 
-        # print(f"The interface comp of F matrix is:{F_interface}")
         
         # Finalizing F_matrix
         F_matrix = torch.cat([F_gradients, F_interface], dim=1)
@@ -496,6 +522,9 @@ class Gempy(grid):
         
         # print(f"The F matrix is:{F_matrix}")
 
+        # print(f"The shape of F matrix is:{F_matrix.shape}")
+
+        
         # Augment K for solving
         ###### [C  F']
         ###### [F  0 ]
@@ -581,7 +610,6 @@ class Gempy(grid):
         sed_rest_SimPoint = self.squared_euclidean_distance(self.rest_layer_points,grid_data_plus_ref)
         sed_ref_SimPoint = self.squared_euclidean_distance(self.ref_layer_points,grid_data_plus_ref)
 
-
         # Contribution from interface data points
 
         # sigma_0_interf =  self.w[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
@@ -589,6 +617,10 @@ class Gempy(grid):
         
         sigma_0_interf =  w_dual[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
         sigma_0_interf = torch.sum(sigma_0_interf,axis = 0)
+
+        # print(f"self.covariance_function(sed_rest_SimPoint):{self.covariance_function(sed_rest_SimPoint)}")
+        # print(f"self.covariance_function(sed_ref_SimPoint): {self.covariance_function(sed_ref_SimPoint)}")
+        
         
         # print(self.Position_G.shape[0]*self.Position_G.shape[1])
         ################################################################
@@ -605,7 +637,12 @@ class Gempy(grid):
 
         # Final estimation of Z*
         ### Z* = Covraince parts (grad + interface) + Basis function part
-        interpolate_result = sigma_0_grad + sigma_0_interf + basis_value
+        interpolate_result = sigma_0_grad + sigma_0_interf  + basis_value
+
+        # print(f"sigma_0_grad: {sigma_0_grad}")
+        # print(f"sigma_0_interf: {sigma_0_interf}")
+        # print(f"basis_value: {basis_value}")
+        # print(f"interpolate_result: {interpolate_result}")
 
         ################################################################
 
@@ -1157,173 +1194,124 @@ class Gempy(grid):
         plotter.show()
 
 def main():        
-
+    
 
     ############### CHECKING BASIS FUNCION IMPLEMENTATION ################
 
-    ### EXAMPLE - 2 -- Dataset from Jan Models - model3 -- Simple recumbent fold to check how basis fits it
-    ### OBSERVATION - Trade-off between both basis and covariance + basis captures some info from parabola/quadratic equation
-    
-    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.005],dtype=torch.float32))
+    ################## EXAMPLE - 3 : Flattening two folds (more gradient info)
+    # OBSERVATION - Trade-off between both basis and covariance ###############
+
+    ## OBSERVATION -  After some time t =4-5 the structure starts to move in oppositse sense of direction is it due to the
+    #### t^2, z^2, x^2, etc term in basis polynomial (parabola/quadratic behaviour)?
+
+    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.5],dtype=torch.float32))
     gp = Gempy("Gempy_test", 
-               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, 0, 0.4],
+               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, -0.5, 5],
                 resolution=[100, 20, 100, 2]
                )
     
     interface_data = {
-        "rock1": torch.tensor([
-            # --- Y=0.2 Slice ---
-            [0.000, 0.200, 0.800, 0.0],
-            [0.000, 0.200, 0.200, 0.0],
-            [0.100, 0.200, 0.790, 0.0],
-            [0.100, 0.200, 0.210, 0.0],
-            [0.200, 0.200, 0.780, 0.0],
-            [0.200, 0.200, 0.220, 0.0],
-            [0.300, 0.200, 0.770, 0.0],
-            [0.300, 0.200, 0.230, 0.0],
-            [0.400, 0.200, 0.760, 0.0],
-            [0.400, 0.200, 0.240, 0.0],
-            [0.700, 0.200, 0.500, 0.0],
-            
-            # --- Y=0.0 Slice ---
-            [0.000, 0.000, 0.800, 0.0],
-            [0.000, 0.000, 0.200, 0.0],
-            [0.100, 0.000, 0.790, 0.0],
-            [0.100, 0.000, 0.210, 0.0],
-            [0.200, 0.000, 0.780, 0.0],
-            [0.200, 0.000, 0.220, 0.0],
-            [0.300, 0.000, 0.770, 0.0],
-            [0.300, 0.000, 0.230, 0.0],
-            [0.400, 0.000, 0.760, 0.0],
-            [0.400, 0.000, 0.240, 0.0],
-            [0.700, 0.000, 0.500, 0.0],
-            
-            # --- Y=0.5 Slice (Center) ---
-            [0.000, 0.500, 0.800, 0.0],
-            [0.000, 0.500, 0.200, 0.0],
-            [0.100, 0.500, 0.790, 0.0],
-            [0.100, 0.500, 0.210, 0.0],
-            [0.200, 0.500, 0.780, 0.0],
-            [0.200, 0.500, 0.220, 0.0],
-            [0.300, 0.500, 0.770, 0.0],
-            [0.300, 0.500, 0.230, 0.0],
-            [0.400, 0.500, 0.760, 0.0],
-            [0.400, 0.500, 0.240, 0.0],
-            [0.700, 0.500, 0.500, 0.0],
-            
-            # --- Y=1.0 Slice ---
-            [0.000, 1.000, 0.800, 0.0],
-            [0.000, 1.000, 0.200, 0.0],
-            [0.100, 1.000, 0.790, 0.0],
-            [0.100, 1.000, 0.210, 0.0],
-            [0.200, 1.000, 0.780, 0.0],
-            [0.200, 1.000, 0.220, 0.0],
-            [0.300, 1.000, 0.770, 0.0],
-            [0.300, 1.000, 0.230, 0.0],
-            [0.400, 1.000, 0.760, 0.0],
-            [0.400, 1.000, 0.240, 0.0],
-            [0.700, 1.000, 0.500, 0.0],
-            
-            # --- Y=0.8 Slice ---
-            [0.700, 0.800, 0.500, 0.0],
-            [0.000, 0.800, 0.800, 0.0],
-            [0.000, 0.800, 0.200, 0.0],
-            [0.100, 0.800, 0.790, 0.0],
-            [0.100, 0.800, 0.210, 0.0],
-            [0.200, 0.800, 0.780, 0.0],
-            [0.200, 0.800, 0.220, 0.0],
-            [0.300, 0.800, 0.770, 0.0],
-            [0.300, 0.800, 0.230, 0.0],
-            [0.400, 0.800, 0.760, 0.0],
-            [0.400, 0.800, 0.240, 0.0]
-        ]),
-        
-        # --- Rock 2 (Inner Core) ---
-        "rock2": torch.tensor([
-             # --- Y=0.2 Slice ---
-            [0.000, 0.200, 0.600, 0.0],
-            [0.000, 0.200, 0.400, 0.0],
-            [0.100, 0.200, 0.590, 0.0],
-            [0.100, 0.200, 0.410, 0.0],
-            [0.200, 0.200, 0.580, 0.0],
-            [0.200, 0.200, 0.420, 0.0],
-            [0.300, 0.200, 0.570, 0.0],
-            [0.300, 0.200, 0.430, 0.0],
-            [0.400, 0.200, 0.560, 0.0],
-            [0.400, 0.200, 0.440, 0.0],
-            
-             # --- Y=0.0 Slice ---
-            [0.000, 0.000, 0.600, 0.0],
-            [0.000, 0.000, 0.400, 0.0],
-            [0.100, 0.000, 0.590, 0.0],
-            [0.100, 0.000, 0.410, 0.0],
-            [0.200, 0.000, 0.580, 0.0],
-            [0.200, 0.000, 0.420, 0.0],
-            [0.300, 0.000, 0.570, 0.0],
-            [0.300, 0.000, 0.430, 0.0],
-            [0.400, 0.000, 0.560, 0.0],
-            [0.400, 0.000, 0.440, 0.0],
-            
-             # --- Y=0.5 Slice ---
-            [0.000, 0.500, 0.600, 0.0],
-            [0.000, 0.500, 0.400, 0.0],
-            [0.100, 0.500, 0.590, 0.0],
-            [0.100, 0.500, 0.410, 0.0],
-            [0.200, 0.500, 0.580, 0.0],
-            [0.200, 0.500, 0.420, 0.0],
-            [0.300, 0.500, 0.570, 0.0],
-            [0.300, 0.500, 0.430, 0.0],
-            [0.400, 0.500, 0.560, 0.0],
-            [0.400, 0.500, 0.440, 0.0],
-            
-             # --- Y=1.0 Slice ---
-            [0.000, 1.000, 0.600, 0.0],
-            [0.000, 1.000, 0.400, 0.0],
-            [0.100, 1.000, 0.590, 0.0],
-            [0.100, 1.000, 0.410, 0.0],
-            [0.200, 1.000, 0.580, 0.0],
-            [0.200, 1.000, 0.420, 0.0],
-            [0.300, 1.000, 0.570, 0.0],
-            [0.300, 1.000, 0.430, 0.0],
-            [0.400, 1.000, 0.560, 0.0],
-            [0.400, 1.000, 0.440, 0.0],
-            
-             # --- Y=0.8 Slice ---
-            [0.000, 0.800, 0.600, 0.0],
-            [0.000, 0.800, 0.400, 0.0],
-            [0.100, 0.800, 0.590, 0.0],
-            [0.100, 0.800, 0.410, 0.0],
-            [0.200, 0.800, 0.580, 0.0],
-            [0.200, 0.800, 0.420, 0.0],
-            [0.300, 0.800, 0.570, 0.0],
-            [0.300, 0.800, 0.430, 0.0],
-            [0.400, 0.800, 0.560, 0.0],
-            [0.400, 0.800, 0.440, 0.0]
-        ])
+        "Fold 1": torch.tensor([
+            [500.0, 500.0, 620.0, 0.0],  # Hinge
+            [300.0, 1200.0, 500.0, 0.0],  # Left Steep
+            [700.0, 1200.0, 500.0, 0.0],  # Right Steep
+            [200.0, 900.0, 400.0, 0.0],  # Left Mid
+            [800.0, 900.0, 400.0, 0.0],  # Right Mid
+            [100.0, 500.0, 300.0, 0.0],  # Left Lower
+            [900.0, 500.0, 300.0, 0.0],  # Right Lower
+            [0.0,   100.0, 200.0, 0.0],  # Left Edge
+            [1000.0,100.0, 200.0, 0.0]   # Right Edge
+        ]) / 1000,
+
+        "Fold 2": torch.tensor([
+            # Shifted UP by 200m (Z + 200)
+            [500.0, 500.0, 820.0, 0.0],  # Hinge
+            [300.0, 1200.0, 700.0, 0.0],
+            [700.0, 1200.0, 700.0, 0.0],
+            [200.0, 900.0, 600.0, 0.0],
+            [800.0, 900.0, 600.0, 0.0],
+            [100.0, 500.0, 500.0, 0.0],
+            [900.0, 500.0, 500.0, 0.0],
+            [0.0,   100.0, 400.0, 0.0],
+            [1000.0,100.0, 400.0, 0.0]
+        ]) / 1000
     }
 
     orientation_data = {
         "Positions": torch.tensor([
-            [0.200, 0.500, 0.780, 0.1],  # Upper Overturned Limb
-            [0.200, 0.500, 0.220, 0.0]   # Lower Upright Limb
-        ]),
-        
+            # --- Fold 1 (Bottom) ---
+            [500.0, 500.0, 620.0, 100],    # Hinge
+            
+            [300.0, 500.0, 500.0, 0],    # Left Steep
+            [700.0, 500.0, 500.0, 0],    # Right Steep
+
+            [200.0, 500.0, 400.0, 0],    # Left Mid
+            [800.0, 500.0, 400.0, 0],    # Right Mid
+
+            [100.0, 500.0, 300.0, 0],    # Left Lower
+            [900.0, 500.0, 300.0, 0],    # Right Lower
+
+            [0.0,   500.0, 200.0, 0],    # Left Edge
+            [1000.0,500.0, 200.0, 0],    # Right Edge
+            
+            # --- Fold 2 (Top) ---
+            # Identical X, Shifted Z (+200)
+            [500.0, 500.0, 820.0, 0], 
+            
+            [300.0, 500.0, 700.0, 0],
+            [700.0, 500.0, 700.0, 0],
+
+            [200.0, 500.0, 600.0, 0],
+            [800.0, 500.0, 600.0, 0],
+
+            [100.0, 500.0, 500.0, 0],
+            [900.0, 500.0, 500.0, 0],
+
+            [0.0,   500.0, 400.0, 0],
+            [1000.0,500.0, 400.0, 0]
+
+        ]) / 1000,
+
         "Values": torch.tensor([
-            # Overturned Limb (Normal pointing DOWN -Z)
-            [-0.0998, 0.0000, -0.9950, 0.0001], 
-            # Upright Limb (Normal pointing UP +Z)
-            [-0.0998, 0.0000, 0.9950, 0.0001]
+            # --- Fold 1 Gradients ---
+            [0.0,    0.0, 1.0,   0.30],  # Hinge (Flat)
+            
+            [-0.866, 0.0, 0.5,   0.25],  # Left Steep (60 deg)
+            [ 0.866, 0.0, 0.5,   0.25],  # Right Steep
+            
+            [-0.707, 0.0, 0.707, 0.20],  # Left Mid (45 deg)
+            [ 0.707, 0.0, 0.707, 0.20],  # Right Mid
+            
+            [-0.5,   0.0, 0.866, 0.15],  # Left Lower (30 deg)
+            [ 0.5,   0.0, 0.866, 0.15],  # Right Lower
+            
+            [-0.174, 0.0, 0.985, 0.10],  # Left Edge (10 deg)
+            [ 0.174, 0.0, 0.985, 0.10],  # Right Edge
+
+            # --- Fold 2 Gradients (Identical to Fold 1) ---
+            [0.0,    0.0, 1.0,   0.30],  
+            
+            [-0.866, 0.0, 0.5,   0.25],  
+            [ 0.866, 0.0, 0.5,   0.25],  
+            
+            [-0.707, 0.0, 0.707, 0.20],  
+            [ 0.707, 0.0, 0.707, 0.20], 
+            
+            [-0.5,   0.0, 0.866, 0.15],  
+            [ 0.5,   0.0, 0.866, 0.15],  
+            
+            [-0.174, 0.0, 0.985, 0.10],  
+            [ 0.174, 0.0, 0.985, 0.10]   
         ])
     }
-    
 
     gp.interface_data(interface_data)
     gp.orientation_data(orientation_data)
     gp.interpolation_options()
     gp.interpolation_options_set(Transformation_matrix=Transformation_matrix)
-    custom_data = torch.tensor([[4,2,3]], dtype=torch.float32)
+    # custom_data = torch.tensor([[40,20,30,0]], dtype=torch.float32)
 
-    gp.activate_custom_grid(custom_grid_data=custom_data)
+    # gp.activate_custom_grid(custom_grid_data=custom_data)
     #gp.active_grid()
     #gp.deactivate_grid("Regular")
     sol = gp.Solution()
@@ -1339,15 +1327,15 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    # import time
-    # for t in [0, 0.1, 0.2, .3, 0.4, 0.5]:
-    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
     # import time
-    # for t in [0, 0.1, 0.2, .3, 0.4, 0.5]:
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
     #     gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
     #     time.sleep(1)
 
@@ -1361,8 +1349,8 @@ def main():
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
-    print("\nStarting Interactive Visualization...")
-    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    # print("\nStarting Interactive Visualization...")
+    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = True)
 
     
 if __name__ == "__main__":

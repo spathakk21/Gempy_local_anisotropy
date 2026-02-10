@@ -127,21 +127,49 @@ class Gempy(grid):
     
     
     def covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         r_by_at = r/self.a_T
         C_r = self.c_o_T *( 1 - 7 * (r_by_at)**2 + 8.75 * (r_by_at)**3 - 3.5 * (r_by_at)**5 + 0.75 * (r_by_at)**7)
+        
+        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero
+        C_r = torch.where(condition, C_r, 0.0)
         return C_r
     
     def first_derivative_covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash =self.c_o_T *( - 14 * (r/self.a_T**2) + 105/4 * (r**2/self.a_T**3) - 35/2 * (r**4/self.a_T**5) + 21/4 * (r**6/self.a_T**7))
         # C_r_dash =self.c_o_T *( - 14 * (r_by_at)**2 + 105/4 * (r_by_at)**3 - 35/2 * (r_by_at)**5 + 21/4 * (r_by_at)**7)/ r
+        
+        ##
+        C_r_dash = torch.where(condition, C_r_dash, 0.0)
+        
         return C_r_dash
     
     def first_derivative_covariance_function_divided_by_r(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash_by_r = self.c_o_T *( - 14 / ((self.a_T)**2) + 105/4 * (r/(self.a_T)**3) - 35/2 * (r**3/(self.a_T)**5) + 21/4 * (r**5/(self.a_T)**7))
+        
+        ##
+        C_r_dash_by_r = torch.where(condition, C_r_dash_by_r, 0.0)
+        
         return C_r_dash_by_r
     
     def second_derivative_covariance_function(self,r):
+
+        condition = r <=self.a_T
+
         C_r_dash_dash =self.c_o_T * 7 * (9 * r ** 5 - 20 * self.a_T ** 2 * r ** 3 + 15 * self.a_T ** 4 * r - 4 * self.a_T ** 5) / (2 * self.a_T ** 7)
+        
+        ##
+        C_r_dash_dash = torch.where(condition, C_r_dash_dash, 0.0)
+
+        
         return C_r_dash_dash
 
     def squared_euclidean_distance(self, x_1,x_2):
@@ -1161,50 +1189,161 @@ def main():
 
     ############### CHECKING BASIS FUNCION IMPLEMENTATION ################
 
-    ## EXAMPLE - 1 -- Flattening two folds (artificial dataset - less gradient info)
-    ## OBSERVATION: Was fitting good with the parabola equation --> basis dominant + covariance weights were very low
-
-
-    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.5],dtype=torch.float32))
+    ### EXAMPLE - 2 -- Dataset from Jan Models - model3 -- Simple recumbent fold to check how basis fits it
+    ### OBSERVATION - Trade-off between both basis and covariance + basis captures some info from parabola/quadratic equation
+    
+    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.005],dtype=torch.float32))
     gp = Gempy("Gempy_test", 
-               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, -0.5, 10],
+               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, 0, 0.4],
                 resolution=[100, 20, 100, 2]
                )
+    
+    interface_data = {
+        "rock1": torch.tensor([
+            # --- Y=0.2 Slice ---
+            [0.000, 0.200, 0.800, 0.0],
+            [0.000, 0.200, 0.200, 0.0],
+            [0.100, 0.200, 0.790, 0.0],
+            [0.100, 0.200, 0.210, 0.0],
+            [0.200, 0.200, 0.780, 0.0],
+            [0.200, 0.200, 0.220, 0.0],
+            [0.300, 0.200, 0.770, 0.0],
+            [0.300, 0.200, 0.230, 0.0],
+            [0.400, 0.200, 0.760, 0.0],
+            [0.400, 0.200, 0.240, 0.0],
+            [0.700, 0.200, 0.500, 0.0],
+            
+            # --- Y=0.0 Slice ---
+            [0.000, 0.000, 0.800, 0.0],
+            [0.000, 0.000, 0.200, 0.0],
+            [0.100, 0.000, 0.790, 0.0],
+            [0.100, 0.000, 0.210, 0.0],
+            [0.200, 0.000, 0.780, 0.0],
+            [0.200, 0.000, 0.220, 0.0],
+            [0.300, 0.000, 0.770, 0.0],
+            [0.300, 0.000, 0.230, 0.0],
+            [0.400, 0.000, 0.760, 0.0],
+            [0.400, 0.000, 0.240, 0.0],
+            [0.700, 0.000, 0.500, 0.0],
+            
+            # --- Y=0.5 Slice (Center) ---
+            [0.000, 0.500, 0.800, 0.0],
+            [0.000, 0.500, 0.200, 0.0],
+            [0.100, 0.500, 0.790, 0.0],
+            [0.100, 0.500, 0.210, 0.0],
+            [0.200, 0.500, 0.780, 0.0],
+            [0.200, 0.500, 0.220, 0.0],
+            [0.300, 0.500, 0.770, 0.0],
+            [0.300, 0.500, 0.230, 0.0],
+            [0.400, 0.500, 0.760, 0.0],
+            [0.400, 0.500, 0.240, 0.0],
+            [0.700, 0.500, 0.500, 0.0],
+            
+            # --- Y=1.0 Slice ---
+            [0.000, 1.000, 0.800, 0.0],
+            [0.000, 1.000, 0.200, 0.0],
+            [0.100, 1.000, 0.790, 0.0],
+            [0.100, 1.000, 0.210, 0.0],
+            [0.200, 1.000, 0.780, 0.0],
+            [0.200, 1.000, 0.220, 0.0],
+            [0.300, 1.000, 0.770, 0.0],
+            [0.300, 1.000, 0.230, 0.0],
+            [0.400, 1.000, 0.760, 0.0],
+            [0.400, 1.000, 0.240, 0.0],
+            [0.700, 1.000, 0.500, 0.0],
+            
+            # --- Y=0.8 Slice ---
+            [0.700, 0.800, 0.500, 0.0],
+            [0.000, 0.800, 0.800, 0.0],
+            [0.000, 0.800, 0.200, 0.0],
+            [0.100, 0.800, 0.790, 0.0],
+            [0.100, 0.800, 0.210, 0.0],
+            [0.200, 0.800, 0.780, 0.0],
+            [0.200, 0.800, 0.220, 0.0],
+            [0.300, 0.800, 0.770, 0.0],
+            [0.300, 0.800, 0.230, 0.0],
+            [0.400, 0.800, 0.760, 0.0],
+            [0.400, 0.800, 0.240, 0.0]
+        ]),
+        
+        # --- Rock 2 (Inner Core) ---
+        "rock2": torch.tensor([
+             # --- Y=0.2 Slice ---
+            [0.000, 0.200, 0.600, 0.0],
+            [0.000, 0.200, 0.400, 0.0],
+            [0.100, 0.200, 0.590, 0.0],
+            [0.100, 0.200, 0.410, 0.0],
+            [0.200, 0.200, 0.580, 0.0],
+            [0.200, 0.200, 0.420, 0.0],
+            [0.300, 0.200, 0.570, 0.0],
+            [0.300, 0.200, 0.430, 0.0],
+            [0.400, 0.200, 0.560, 0.0],
+            [0.400, 0.200, 0.440, 0.0],
+            
+             # --- Y=0.0 Slice ---
+            [0.000, 0.000, 0.600, 0.0],
+            [0.000, 0.000, 0.400, 0.0],
+            [0.100, 0.000, 0.590, 0.0],
+            [0.100, 0.000, 0.410, 0.0],
+            [0.200, 0.000, 0.580, 0.0],
+            [0.200, 0.000, 0.420, 0.0],
+            [0.300, 0.000, 0.570, 0.0],
+            [0.300, 0.000, 0.430, 0.0],
+            [0.400, 0.000, 0.560, 0.0],
+            [0.400, 0.000, 0.440, 0.0],
+            
+             # --- Y=0.5 Slice ---
+            [0.000, 0.500, 0.600, 0.0],
+            [0.000, 0.500, 0.400, 0.0],
+            [0.100, 0.500, 0.590, 0.0],
+            [0.100, 0.500, 0.410, 0.0],
+            [0.200, 0.500, 0.580, 0.0],
+            [0.200, 0.500, 0.420, 0.0],
+            [0.300, 0.500, 0.570, 0.0],
+            [0.300, 0.500, 0.430, 0.0],
+            [0.400, 0.500, 0.560, 0.0],
+            [0.400, 0.500, 0.440, 0.0],
+            
+             # --- Y=1.0 Slice ---
+            [0.000, 1.000, 0.600, 0.0],
+            [0.000, 1.000, 0.400, 0.0],
+            [0.100, 1.000, 0.590, 0.0],
+            [0.100, 1.000, 0.410, 0.0],
+            [0.200, 1.000, 0.580, 0.0],
+            [0.200, 1.000, 0.420, 0.0],
+            [0.300, 1.000, 0.570, 0.0],
+            [0.300, 1.000, 0.430, 0.0],
+            [0.400, 1.000, 0.560, 0.0],
+            [0.400, 1.000, 0.440, 0.0],
+            
+             # --- Y=0.8 Slice ---
+            [0.000, 0.800, 0.600, 0.0],
+            [0.000, 0.800, 0.400, 0.0],
+            [0.100, 0.800, 0.590, 0.0],
+            [0.100, 0.800, 0.410, 0.0],
+            [0.200, 0.800, 0.580, 0.0],
+            [0.200, 0.800, 0.420, 0.0],
+            [0.300, 0.800, 0.570, 0.0],
+            [0.300, 0.800, 0.430, 0.0],
+            [0.400, 0.800, 0.560, 0.0],
+            [0.400, 0.800, 0.440, 0.0]
+        ])
+    }
 
-
-    interface_data={"Fold 1": torch.tensor([
-        [0.0,    500.0, 200.0, 0.0],  # Left Base
-        [400.0,  600.0, 600.0, 0.0],  # Left Hinge Top
-        [600.0,  700.0, 600.0, 0.0],  # Right Hinge Top
-        [1000.0, 500.0, 200.0, 0.0]   # Right Base
-    ]) / 1000,
-
-    "Fold 2": torch.tensor([
-        [0.0,    500.0, 400.0, 0.0],  # Left Base
-        [400.0,  600.0, 800.0, 0.0],  # Left Hinge Top
-        [600.0,  700.0, 800.0, 0.0],  # Right Hinge Top
-        [1000.0, 500.0, 400.0, 0.0]   # Right Base
-    ]) / 1000}
-
-    orientation_data ={"Positions": torch.tensor([
-        # --- Fold 1 (Bottom) ---
-        [200.0, 500.0, 400.0, 100],   
-        [800.0, 500.0, 400.0, 0],   
-
-        # --- Fold 2 (Top) ---
-        [200.0, 500.0, 600.0, 0],   
-        [800.0, 500.0, 600.0, 0]    
-    ]) / 1000,
-
-    "Values": torch.tensor([
-        # --- Fold 1 Gradients ---
-        [-0.707, 0.0, 0.707, 0.05], 
-        [ 0.707, 0.0, 0.707, 0.05], 
-
-        # --- Fold 2 Gradients ---
-        [-0.707, 0.0, 0.707, 0.05], 
-        [ 0.707, 0.0, 0.707, 0.05]  
-    ])}
+    orientation_data = {
+        "Positions": torch.tensor([
+            [0.200, 0.500, 0.780, 0.1],  # Upper Overturned Limb
+            [0.200, 0.500, 0.220, 0.0]   # Lower Upright Limb
+        ]),
+        
+        "Values": torch.tensor([
+            # Overturned Limb (Normal pointing DOWN -Z)
+            [-0.0998, 0.0000, -0.9950, 0.0001], 
+            # Upright Limb (Normal pointing UP +Z)
+            [-0.0998, 0.0000, 0.9950, 0.0001]
+        ])
+    }
+    
 
     gp.interface_data(interface_data)
     gp.orientation_data(orientation_data)
@@ -1228,15 +1367,15 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75]:
-        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [0, 0.1, 0.2, .3, 0.4, 0.5]:
+    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
     # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    # for t in [0, 0.1, 0.2, .3, 0.4, 0.5]:
     #     gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
     #     time.sleep(1)
 
@@ -1250,8 +1389,9 @@ def main():
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
-    # print("\nStarting Interactive Visualization...")
-    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    print("\nStarting Interactive Visualization...")
+    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
+    
 if __name__ == "__main__":
     main()
