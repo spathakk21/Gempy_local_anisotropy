@@ -4,7 +4,7 @@ import copy
 import matplotlib.pyplot as plt
 
 # Import methods from pyvista_new.py
-from pyvista_gempy_local_anisotropy import Gempy
+from pyvista_gempy import Gempy
 
 class GempyFaultModel(Gempy):
     """
