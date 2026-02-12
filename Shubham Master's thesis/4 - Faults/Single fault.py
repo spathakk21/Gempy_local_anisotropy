@@ -3,7 +3,7 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-# Import methods from pyvista_new.py
+# Import methods from pyvista_gempy.py
 from pyvista_gempy import Gempy
 
 class GempyFaultModel(Gempy):
