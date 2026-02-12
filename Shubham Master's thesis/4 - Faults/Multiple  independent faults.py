@@ -291,13 +291,13 @@ if __name__ == "__main__":
 
     fault1_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
     
-    # Fault 1: Moves Hanging Wall UP by 0.2 (Z-axis)
+    # Fault 1: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
     model.add_fault_displacement('fault1', torch.tensor([0.0, 0.0, 0.2, 0.0]))
 
     fault1_input = {'sp_coord': fault1_interface_data, 'op_coord': fault1_orientation_data, 
                     'transformation_matrix': fault1_transformation_matrix}
 
-    # 1. FAULT 1 Data
+    # FAULT 2 Data
     fault2_interface_data = {
     'fault2': torch.tensor([
         [700., 500., 500.,   0.],
@@ -320,8 +320,8 @@ if __name__ == "__main__":
 
     fault2_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
 
-    # Fault 1: Moves Hanging Wall UP by 0.2 (Z-axis)
-    model.add_fault_displacement('fault2', torch.tensor([0.0, 0.0, 0.3, 0.0]))
+    # Fault 2: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
+    model.add_fault_displacement('fault2', torch.tensor([0.0, 0.0, 0.2, 0.0]))
 
     fault2_input = {'sp_coord': fault2_interface_data, 'op_coord': fault2_orientation_data, 
                     'transformation_matrix': fault2_transformation_matrix}
