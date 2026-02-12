@@ -312,19 +312,19 @@ if __name__ == "__main__":
     ]) / 1000,
 
         "Values": torch.tensor([
-           [0.866, 0.0, 0.5, 0.]
+           [0.866, 0.0, 0.5, -0.01]
         ])
     }
 
-    fault1_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
+    fault1_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
     
     # Fault 1: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
-    model.add_fault_displacement('fault1', torch.tensor([0.0, 0.0, 0.1, 0.0]))
+    model.add_fault_displacement('fault1', torch.tensor([0.0, 0.0, 0.2, 0.0]))
 
     fault1_input = {'sp_coord': fault1_interface_data, 'op_coord': fault1_orientation_data, 
                     'transformation_matrix': fault1_transformation_matrix}
 
-    # FAULT 2 Data
+    #  FAULT 2 Data
     fault2_interface_data = {
     'fault2': torch.tensor([
         [700., 500., 500.,   0.],
@@ -345,10 +345,33 @@ if __name__ == "__main__":
         ])
     }
 
-    fault2_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
+
+    # TRYING- FAULT 2 Data (Opposite Dip & Cross-Cutting) -
+    # fault2_interface_data = {
+    #     'fault2': torch.tensor([
+    #         [200., 500., 500.,   0.], 
+    #         [250., 500., 600.,   0.], 
+    #         [200., 200., 500.,   0.], 
+    #         [250., 200., 600.,   0.], 
+    #         [200., 800., 500.,   0.], 
+    #         [250., 800., 600.,   0.]  
+    #     ]) / 1000
+    # }
+
+    # fault2_orientation_data = {
+    #     'Positions': torch.tensor([
+    #         [225., 500., 550.,   0.]  
+    #     ]) / 1000,
+
+    #     "Values": torch.tensor([
+    #         [-0.866, 0.0, 0.5, -0.01]    
+    #     ])
+    # }
+
+    fault2_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
     # Fault 2: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
-    model.add_fault_displacement('fault2', torch.tensor([0.0, 0.0, 0.2, 0.0]))
+    model.add_fault_displacement('fault2', torch.tensor([0.0, 0.0, 0.3, 0.0]))
 
     fault2_input = {'sp_coord': fault2_interface_data, 'op_coord': fault2_orientation_data, 
                     'transformation_matrix': fault2_transformation_matrix}
@@ -416,17 +439,17 @@ if __name__ == "__main__":
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5, 5, 5.5 ,6, 6.5]:
+        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     #############################################################################################
