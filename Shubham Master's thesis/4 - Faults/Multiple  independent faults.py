@@ -3,8 +3,8 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-# Import methods from pyvista_gempy.py
-from pyvista_gempy import Gempy
+# Import methods from pyvista_new.py
+from withbasisfunction import Gempy
 
 class GempyFaultModel(Gempy):
     """
@@ -185,6 +185,7 @@ class GempyFaultModel(Gempy):
         combined_backup = self.save_internal_state()
 
         total_drift = torch.zeros_like(grid_coord)
+        # total_drift = torch.tensor([])
 
         try:
             ###### Step 1: Loop Over faults and Calculate Fault Scalar Field ######
@@ -193,11 +194,10 @@ class GempyFaultModel(Gempy):
 
                 # Loading fault data from storage
                 self.load_internal_state(state)
-                
+
                 # Calculating scalar field on original grid from 4D GemPy super class
                 # And capturing the scalar_field output as fault_out
                 fault_out, _ = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
-
 
                 ### We calculate fault_scalars to calcualte the drift on each grid point
                 ### Or to get volume of points
@@ -221,16 +221,32 @@ class GempyFaultModel(Gempy):
                 else:
                         threshold = torch.mean(fault_scalars)
 
+
+                # print(f"Multiple fault threshold: {threshold}")
+                # 2.460078716278076
+
+                # print(f"  > Scalar Mean: {torch.mean(fault_scalars):.5f}")
+                # > Scalar Mean: 2.11825
                 ###### Step 2: Caclualte drift for this fault ######
                 
-    
-                disp = self.fault_displacement_vectors.get(fname, torch.tensor([0.,0.,0.,0.]))
+                ## Return zero displacement if nothing is provided
+                disp = self.fault_displacement_vectors[fname]
+                # print(disp)
                 drift = self.transform_function(fault_scalars, grid_coord, threshold, disp)
 
                 total_drift += drift
-            
+
+                # print(f"fault_out in multiple case:{fault_out}")
+                # print(f"fault_scalars in sinmultiplegle case:{fault_scalars}")
+                # print(f"fault_scalars mean in multiple case:{torch.mean(fault_scalars)}")
+                # print(f"fault threshold in multiple case:{threshold}")
+                # print(f"drift in multiple case: {drift}")
+                
             ##### Step 3:  Apply Coordinate/Grid Transformation #####
             deformed_coords = grid_coord + total_drift
+
+            # print(f"deformed_coords in multiple case: {deformed_coords}")
+            # print(f"Total drift in multiple case: {total_drift}")
 
             ###### Step 3: Calculate Structural Scalar Field on Deformed Grid ######
             # Loading structure data from storage
@@ -262,120 +278,206 @@ class GempyFaultModel(Gempy):
 if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
-    extent = [-0.1,1.2,0.1,1.2,-0.1,1.2, 0,5]
-    resolution = [50, 50, 50, 2]
+#     extent = [-0.1,1.2,0.1,1.2,-0.1,1.2, 0,5]
+#     resolution = [50, 50, 50, 2]
+
+#     # Initialize Custom Model
+#     model = GempyFaultModel("Fault_4D_Test", extent, resolution)
+    
+#     # 1. FAULT 1 Data
+#     fault1_interface_data = {
+#     'fault1': torch.tensor([
+#         [500., 500., 500.,   0.],
+#         [450., 500., 600.,   0.],
+#         [500., 200., 500.,   0.],
+#         [450., 200., 600.,   0.],
+#         [500., 800., 500.,   0.],
+#         [450., 800., 600.,   0.]
+#     ])/1000
+# }
+#     fault1_orientation_data = {
+#         'Positions': torch.tensor([
+#         [500., 500., 500.,   0.]
+#     ]) / 1000,
+
+#         "Values": torch.tensor([
+#            [0.866, 0.0, 0.5, 0.]
+#         ])
+#     }
+
+#     fault1_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
+    
+#     # Fault 1: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
+#     model.add_fault_displacement('fault1', torch.tensor([0.0, 0.0, 0.2, 0.0]))
+
+#     fault1_input = {'sp_coord': fault1_interface_data, 'op_coord': fault1_orientation_data, 
+#                     'transformation_matrix': fault1_transformation_matrix}
+
+#     # 1. FAULT 1 Data
+#     fault2_interface_data = {
+#     'fault2': torch.tensor([
+#         [700., 500., 500.,   0.],
+#         [650., 500., 600.,   0.],
+#         [700., 200., 500.,   0.],
+#         [650., 200., 600.,   0.],
+#         [700., 800., 500.,   0.],
+#         [650., 800., 600.,   0.]
+#     ])/1000
+# }
+#     fault2_orientation_data = {
+#         'Positions': torch.tensor([
+#         [500., 500., 500.,   0.]
+#     ]) / 1000,
+
+#         "Values": torch.tensor([
+#            [0.866, 0.0, 0.5, 0.]
+#         ])
+#     }
+
+#     fault2_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
+
+#     # Fault 2: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
+#     model.add_fault_displacement('fault2', torch.tensor([0.0, 0.0, 0.3, 0.0]))
+
+#     fault2_input = {'sp_coord': fault2_interface_data, 'op_coord': fault2_orientation_data, 
+#                     'transformation_matrix': fault2_transformation_matrix}
+
+#     faults_dict = {
+#     'fault1': fault1_input,  # Your original fault
+#     'fault2': fault2_input  # The new parallel fault
+#     }
+#     # 2. STRUCTURE Data
+#     struct_interface_data =  {
+#         'rock1': torch.tensor([
+#         [   0.,  200.,  600.,    0.],
+#         [   0.,  500.,  600.,    0.],
+#         [   0.,  800.,  600.,    0.],
+#         [ 200.,  200.,  600.,    0.],
+#         [ 200.,  500.,  600.,    0.],
+#         [ 200.,  800.,  600.,    0.],
+#         [ 800.,  200.,  200.,    0.],
+#         [ 800.,  500.,  200.,    0.],
+#         [ 800.,  800.,  200.,    0.],
+#         [1000.,  200.,  200.,    0.],
+#         [1000.,  500.,  200.,    0.],
+#         [1000.,  800.,  200.,    0.]
+#     ])/1000,
+    
+#     'rock2': torch.tensor([
+#         [   0.,  200.,  800.,    0.],
+#         [   0.,  800.,  800.,    0.],
+#         [ 200.,  200.,  800.,    0.],
+#         [ 200.,  800.,  800.,    0.],
+#         [ 800.,  200.,  400.,    0.],
+#         [ 800.,  800.,  400.,    0.],
+#         [1000.,  200.,  400.,    0.],
+#         [1000.,  800.,  400.,    0.]
+#         ]) / 1000
+#     }
+#     struct_orientation_data = {
+#         'Positions': torch.tensor([
+#         [100., 500., 800.,   0.],  # rock2
+#         [100., 500., 600.,   0.],  # rock1
+#         [900., 500., 400.,   0.],  # rock2
+#         [900., 500., 200.,   0.],  # rock1
+
+#         ]) / 1000,
+
+#         "Values": torch.tensor([
+#             [0., 0., 1., 0.1],
+#             [0., 0., 1., 0.1],
+#             [0., 0., 1., -0.1],
+#             [0., 0., 1., -0.1]
+#         ])
+#     }
+
+    #### JAN MODEL 5 DATASET
+    extent = [-0.1, 1.1, 0.1, 0.9, -0.1, 0.90, 0, 5]
+    resolution = [100, 50, 50, 2]
 
     # Initialize Custom Model
-    model = GempyFaultModel("Fault_4D_Test", extent, resolution)
+    model = GempyFaultModel("jan_models dataset model5", extent, resolution)
     
-    # 1. FAULT 1 Data
-    fault1_interface_data = {
-    'fault1': torch.tensor([
-        [500., 500., 500.,   0.],
-        [450., 500., 600.,   0.],
-        [500., 200., 500.,   0.],
-        [450., 200., 600.,   0.],
-        [500., 800., 500.,   0.],
-        [450., 800., 600.,   0.]
+    # 1. FAULT Data
+    fault_interface_data = {
+    'fault': torch.tensor([
+         [500.0, 500.0, 500.0, 0.0],
+        [450.0, 500.0, 600.0, 0.0],
+        [500.0, 200.0, 500.0, 0.0],
+        [450.0, 200.0, 600.0, 0.0],
+        [500.0, 800.0, 500.0, 0.0],
+        [450.0, 800.0, 600.0, 0.0],
+        
+        ## NEW POINTS
+        [500.0, 800.0, 510.0, 0.0],
+        [450.0, 800.0, 590.0, 0.0]
     ])/1000
 }
-    fault1_orientation_data = {
+    fault_orientation_data = {
         'Positions': torch.tensor([
-        [500., 500., 500.,   0.]
+       [500.0, 500.0, 500.0, 0.0]
     ]) / 1000,
 
         "Values": torch.tensor([
-           [0.866, 0.0, 0.5, 0.]
-        ])
+        [0.866, 0.000, 0.500, 0.0]
+    ])
     }
 
-    fault1_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
-    
-    # Fault 1: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
-    model.add_fault_displacement('fault1', torch.tensor([0.0, 0.0, 0.2, 0.0]))
+    fault_transformation_matrix = torch.diag(torch.tensor([1,1,1,0],dtype=torch.float32))
+    model.add_fault_displacement('fault1', torch.tensor([0.0, 0.0, 0.25, 0.0]))
 
-    fault1_input = {'sp_coord': fault1_interface_data, 'op_coord': fault1_orientation_data, 
-                    'transformation_matrix': fault1_transformation_matrix}
-
-    # FAULT 2 Data
-    fault2_interface_data = {
-    'fault2': torch.tensor([
-        [700., 500., 500.,   0.],
-        [650., 500., 600.,   0.],
-        [700., 200., 500.,   0.],
-        [650., 200., 600.,   0.],
-        [700., 800., 500.,   0.],
-        [650., 800., 600.,   0.]
-    ])/1000
-}
-    fault2_orientation_data = {
-        'Positions': torch.tensor([
-        [500., 500., 500.,   0.]
-    ]) / 1000,
-
-        "Values": torch.tensor([
-           [0.866, 0.0, 0.5, 0.]
-        ])
-    }
-
-    fault2_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
-
-    # Fault 2: Moves Hanging Wall UP/DOWN by 0.2 (Z-axis)
-    model.add_fault_displacement('fault2', torch.tensor([0.0, 0.0, 0.2, 0.0]))
-
-    fault2_input = {'sp_coord': fault2_interface_data, 'op_coord': fault2_orientation_data, 
-                    'transformation_matrix': fault2_transformation_matrix}
+    fault_input = {'sp_coord': fault_interface_data, 'op_coord': fault_orientation_data, 'transformation_matrix': fault_transformation_matrix}
 
     faults_dict = {
-    'fault1': fault1_input,  # Your original fault
-    'fault2': fault2_input  # The new parallel fault
+    'fault1': fault_input
     }
+
     # 2. STRUCTURE Data
     struct_interface_data =  {
-        'rock1': torch.tensor([
-        [   0.,  200.,  600.,    0.],
-        [   0.,  500.,  600.,    0.],
-        [   0.,  800.,  600.,    0.],
-        [ 200.,  200.,  600.,    0.],
-        [ 200.,  500.,  600.,    0.],
-        [ 200.,  800.,  600.,    0.],
-        [ 800.,  200.,  200.,    0.],
-        [ 800.,  500.,  200.,    0.],
-        [ 800.,  800.,  200.,    0.],
-        [1000.,  200.,  200.,    0.],
-        [1000.,  500.,  200.,    0.],
-        [1000.,  800.,  200.,    0.]
-    ])/1000,
+        "rock1": torch.tensor([
+        [0.0, 200.0, 600.0, 0.0],
+        [0.0, 500.0, 600.0, 0.0],
+        [0.0, 800.0, 600.0, 0.0],
+        [200.0, 200.0, 600.0, 0.0],
+        [200.0, 500.0, 600.0, 0.0],
+        [200.0, 800.0, 600.0, 0.0],
+        [800.0, 200.0, 200.0, 0.0],
+        [800.0, 500.0, 200.0, 0.0],
+        [800.0, 800.0, 200.0, 0.0],
+        [1000.0, 200.0, 200.0, 0.0],
+        [1000.0, 500.0, 200.0, 0.0],
+        [1000.0, 800.0, 200.0, 0.0],
+    ]) / 1000,
+
+    "rock2": torch.tensor([
+        [0.0, 200.0, 800.0, 0.0],
+        [0.0, 800.0, 800.0, 0.0],
+        [200.0, 200.0, 800.0, 0.0],
+        [200.0, 800.0, 800.0, 0.0],
+        [800.0, 200.0, 400.0, 0.0],
+        [800.0, 800.0, 400.0, 0.0],
+        [1000.0, 200.0, 400.0, 0.0],
+        [1000.0, 800.0, 400.0, 0.0],
+    ]) / 1000
     
-    'rock2': torch.tensor([
-        [   0.,  200.,  800.,    0.],
-        [   0.,  800.,  800.,    0.],
-        [ 200.,  200.,  800.,    0.],
-        [ 200.,  800.,  800.,    0.],
-        [ 800.,  200.,  400.,    0.],
-        [ 800.,  800.,  400.,    0.],
-        [1000.,  200.,  400.,    0.],
-        [1000.,  800.,  400.,    0.]
-        ]) / 1000
-    }
+}
     struct_orientation_data = {
-        'Positions': torch.tensor([
-        [100., 500., 800.,   0.],  # rock2
-        [100., 500., 600.,   0.],  # rock1
-        [900., 500., 400.,   0.],  # rock2
-        [900., 500., 200.,   0.],  # rock1
+       "Positions": torch.tensor([
+        [100.0, 500.0, 800.0, 0.0],
+        [100.0, 500.0, 600.0, 0.0],
+        [900.0, 500.0, 400.0, 0.0],
+        [900.0, 500.0, 200.0, 0.0],
+    ]) / 1000,
 
-        ]) / 1000,
-
-        "Values": torch.tensor([
-            [0., 0., 1., 0.1],
-            [0., 0., 1., 0.1],
-            [0., 0., 1., -0.1],
-            [0., 0., 1., -0.1]
-        ])
-    }
-
-    struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
+    "Values": torch.tensor([
+        [0.000, 0.000, 1.000, 0.0],
+        [0.000, 0.000, 1.000, 0.0],
+        [0.000, 0.000, 1.000, 0.0],
+        [0.000, 0.000, 1.000, 0.0],
+    ])
+}
+    
+    struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0],dtype=torch.float32))
 
     struct_input = {'sp_coord': struct_interface_data, 'op_coord': struct_orientation_data, 'transformation_matrix': struct_transformation_matrix}
 
@@ -389,10 +491,10 @@ if __name__ == "__main__":
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -412,5 +514,5 @@ if __name__ == "__main__":
     ###############################################################
 
     # --- PLOTTING ---
-    # model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
+    model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
    

@@ -3,8 +3,8 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-# Import methods from pyvista_gempy.py
-from pyvista_gempy import Gempy
+# Import methods from pyvista_new.py
+from withbasisfunction import Gempy
 
 class GempyFaultModel(Gempy):
     """
@@ -23,7 +23,7 @@ class GempyFaultModel(Gempy):
         self.structure_state = None
 
         # Stores scalar value that defines where the fault plane is.
-        self.fault_threshold = 0.0 
+        # self.fault_threshold = 0.0 
         
         # Default coordinate transformation function (step function)
         self.transform_function = self.default_heaviside_drift
@@ -33,8 +33,8 @@ class GempyFaultModel(Gempy):
         ########################################################################################
 
         # Explicitly defining a default displacement for fault: Shift in Z by 200 units
-        # means hanging wall block (wall/block above the fault plane) moves up/down 200 units relative to Footwall
-        self.fault_displacement_vector = torch.tensor([0.0, 0.0, 0.2, 0.0]) 
+        # means hanging wall block (wall or block above the fault plane) moves up/down 200 units relative to Footwall
+        self.fault_displacement_vector = torch.tensor([0.0, 0.0, 0.25, 0.0]) 
 
     def set_custom_transformation(self, func):
 
@@ -55,7 +55,10 @@ class GempyFaultModel(Gempy):
             
         # Check vector has same dimensions as grid (handle 3D vs 4D)
         dims = grid_coords.shape[1]
+        # print(f"dims: {dims}")
         disp_vec = self.fault_displacement_vector[:dims]
+        # print(f"disp_vec: {disp_vec}")
+
 
         #  Determine Fault Side (Heaviside Step)
         # If the scalar field is greater then the threshold the result is 1.0 (Hanging wall block)
@@ -198,7 +201,7 @@ class GempyFaultModel(Gempy):
             # And capturing the scalar_field output as fault_out
             fault_out, _ = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
 
-
+            
             ### We calculate fault_scalars to calcualte the drift on each grid point
             ### Or to get volume of points
             if "Regular" in fault_out:
@@ -214,20 +217,35 @@ class GempyFaultModel(Gempy):
             
     
             ##### Fault threshold - Average value at fault interface #####
-            if self.fault_threshold == 0.0:
-                if "scalar_ref_points" in fault_out:
+            # if self.fault_threshold == 0.0:
+
+            if "scalar_ref_points" in fault_out:
                     # capturing mean of reference points of faults
                     self.fault_threshold = torch.mean(fault_out["scalar_ref_points"])
-                else:
+            else:
                     self.fault_threshold = torch.mean(fault_scalars)
 
+            
+            # print(f"Single fault threshold: {self.fault_threshold}")
+            # 1.9309442043304443
 
+            # print(f"  > Scalar Mean: {torch.mean(fault_scalars):.5f}")
+            # Scalar Mean: 1.84997
 
             ###### Step 2: Apply Coordinate Transformation ######
 
+            # print(self.fault_displacement_vector)
 
             drift = self.transform_function(fault_scalars, grid_coord, self.fault_threshold)
             deformed_coords = grid_coord + drift
+
+            # print(f"fault_out in single case:{fault_out}")
+            # print(f"fault_scalars in single case:{fault_scalars}")
+            # print(f"fault_scalars mean in single case:{torch.mean(fault_scalars)}")
+            # print(f"fault threshold in single case:{self.fault_threshold}")
+            # print(f"drift in single case: {drift}")
+            # print(f"deformed_coords in single case: {deformed_coords}")
+
 
             ###### Step 3: Calculate Structural Scalar Field on Deformed Grid ######
             # Loading structure data from storage
@@ -253,85 +271,103 @@ class GempyFaultModel(Gempy):
         """
         return self.compute_faulted_grid(grid_coord)
     
+    ####### PLOTTING SCALAR FIELD FOR - FAULT, STRUCTURE, RESULTANT ##############
+
 if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
-    extent = [-0.1,1.2,0.1,1.2,-0.1,1.2, 0,5]
-    resolution = [50, 50, 50, 2]
+    extent = [-0.1, 1.1, 0.1, 0.9, -0.5, 0.90, 0, 5]
+    resolution = [100, 50, 50, 2]
 
     # Initialize Custom Model
-    model = GempyFaultModel("Fault_4D_Test", extent, resolution)
+    model = GempyFaultModel("fault_relation_example", extent, resolution)
     
     # 1. FAULT Data
     fault_interface_data = {
-    'fault': torch.tensor([
-        [500., 500., 500.,   0.],
-        [450., 500., 600.,   0.],
-        [500., 200., 500.,   0.],
-        [450., 200., 600.,   0.],
-        [500., 800., 500.,   0.],
-        [450., 800., 600.,   0.]
+    'fault1': torch.tensor([
+        
+
+         [500.0, 500.0, 500.0, 0.0],
+        [450.0, 500.0, 600.0, 0.0],
+        [500.0, 200.0, 500.0, 0.0],
+        [450.0, 200.0, 600.0, 0.0],
+        [500.0, 800.0, 500.0, 0.0],
+        [450.0, 800.0, 600.0, 0.0],
+        
+        ## NEW POINTS
+        [500.0, 800.0, 510.0, 0.0],
+        [450.0, 800.0, 590.0, 0.0]
     ])/1000
 }
     fault_orientation_data = {
         'Positions': torch.tensor([
-        [500., 500., 500.,   0.]
+        [500.0, 500.0, 500.0, 0]
     ]) / 1000,
 
         "Values": torch.tensor([
-           [0.866, 0.0, 0.5, -0.1]
+           [0.8944, 0.0, 0.4472, 0.1]
         ])
     }
 
-    fault_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.01],dtype=torch.float32))
+    # fault_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
+    # fault_transformation_matrix = torch.tensor([[0.8944,  0.0000,  +0.4473,  0.3212], ## UNABLE TO UNDERSTAND
+    #     [ 0.0000,  1.0,  0.0000,  0.0000],
+    #     [-0.4473,  0.0000,  0.8944,  0.1603],
+    #     [ 0.0000,  0.0000,  0.0000,  0.5]])
+
+    fault_transformation_matrix = torch.tensor([[1,  0.0000,  +0.0,  0.0],
+        [ 0.0000,  1.0,  0.0000,  0.0000],
+        [-0.0,  0.0000,  1.0,  0.0],
+        [ 0.0000,  0.0000, 0.0000,  0.0]])
+
+    
     fault_input = {'sp_coord': fault_interface_data, 'op_coord': fault_orientation_data, 'transformation_matrix': fault_transformation_matrix}
 
     # 2. STRUCTURE Data
     struct_interface_data =  {
-        'rock1': torch.tensor([
-        [   0.,  200.,  600.,    0.],
-        [   0.,  500.,  600.,    0.],
-        [   0.,  800.,  600.,    0.],
-        [ 200.,  200.,  600.,    0.],
-        [ 200.,  500.,  600.,    0.],
-        [ 200.,  800.,  600.,    0.],
-        [ 800.,  200.,  200.,    0.],
-        [ 800.,  500.,  200.,    0.],
-        [ 800.,  800.,  200.,    0.],
-        [1000.,  200.,  200.,    0.],
-        [1000.,  500.,  200.,    0.],
-        [1000.,  800.,  200.,    0.]
-    ])/1000,
-    
-    'rock2': torch.tensor([
-        [   0.,  200.,  800.,    0.],
-        [   0.,  800.,  800.,    0.],
-        [ 200.,  200.,  800.,    0.],
-        [ 200.,  800.,  800.,    0.],
-        [ 800.,  200.,  400.,    0.],
-        [ 800.,  800.,  400.,    0.],
-        [1000.,  200.,  400.,    0.],
-        [1000.,  800.,  400.,    0.]
-        ]) / 1000
+         "rock1": torch.tensor([
+        [0.0, 200.0, 600.0, 0.0],
+        [0.0, 500.0, 600.0, 0.0],
+        [0.0, 800.0, 600.0, 0.0],
+        [200.0, 200.0, 600.0, 0.0],
+        [200.0, 500.0, 600.0, 0.0],
+        [200.0, 800.0, 600.0, 0.0],
+        [800.0, 200.0, 200.0, 0.0],
+        [800.0, 500.0, 200.0, 0.0],
+        [800.0, 800.0, 200.0, 0.0],
+        [1000.0, 200.0, 200.0, 0.0],
+        [1000.0, 500.0, 200.0, 0.0],
+        [1000.0, 800.0, 200.0, 0.0],
+    ]) / 1000,
+
+    "rock2": torch.tensor([
+        [0.0, 200.0, 800.0, 0.0],
+        [0.0, 800.0, 800.0, 0.0],
+        [200.0, 200.0, 800.0, 0.0],
+        [200.0, 800.0, 800.0, 0.0],
+        [800.0, 200.0, 400.0, 0.0],
+        [800.0, 800.0, 400.0, 0.0],
+        [1000.0, 200.0, 400.0, 0.0],
+        [1000.0, 800.0, 400.0, 0.0],
+    ]) / 1000
     }
     struct_orientation_data = {
-        'Positions': torch.tensor([
-        [100., 500., 800.,   0.],  # rock2
-        [100., 500., 600.,   0.],  # rock1
-        [900., 500., 400.,   0.],  # rock2
-        [900., 500., 200.,   0.],  # rock1
-
-        ]) / 1000,
+         "Positions": torch.tensor([
+        [100.0, 500.0, 800.0, 0.0],
+        [100.0, 500.0, 600.0, 0.0],
+        [900.0, 500.0, 400.0, 0.0],
+        [900.0, 500.0, 200.0, 0.0],
+    ]) / 1000,
 
         "Values": torch.tensor([
-            [0., 0., 1., 0.1],
-            [0., 0., 1., 0.1],
-            [0., 0., 1., -0.1],
-            [0., 0., 1., -0.1]
-        ])
+        [0.000, 0.000, 1.000, 0.1],
+        [0.000, 0.000, 1.000, 0.1],
+        [0.000, 0.000, 1.000, -0.1],
+        [0.000, 0.000, 1.000, -0.1],
+    ])
     }
-
+    
     struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
     struct_input = {'sp_coord': struct_interface_data, 'op_coord': struct_orientation_data, 'transformation_matrix': struct_transformation_matrix}
@@ -346,10 +382,10 @@ if __name__ == "__main__":
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -368,6 +404,9 @@ if __name__ == "__main__":
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
+    # 
+
+
     # --- PLOTTING ---
-    # model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
+    model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
    
