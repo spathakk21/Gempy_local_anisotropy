@@ -48,25 +48,20 @@ class GempyFaultModel(Gempy):
         Calculates coordinate shift for every point in grid
 
         '''
-
-        # Check displacement vector matches grid dtype
-        if self.fault_displacement_vector.dtype != grid_coords.dtype:
-            self.fault_displacement_vector = self.fault_displacement_vector.to(grid_coords)
-            
-        # Check vector has same dimensions as grid (handle 3D vs 4D)
-        dims = grid_coords.shape[1]
-        # print(f"dims: {dims}")
-        disp_vec = self.fault_displacement_vector[:dims]
+        
+        disp_vec = self.fault_displacement_vector
         # print(f"disp_vec: {disp_vec}")
-
-
+        
         #  Determine Fault Side (Heaviside Step)
         # If the scalar field is greater then the threshold the result is 1.0 (Hanging wall block)
         # Otherwise it is 0.0 (Footwall block)
         drift_mask = (fault_scalars > threshold).float()
-        
+        # print(drift_mask)
+
         # Apply displacement to the points on hanging wall according to displacement vector
         drift = drift_mask.unsqueeze(1) * disp_vec.unsqueeze(0)
+
+        # print(drift)
         return drift
 
     def save_internal_state(self):
@@ -84,7 +79,7 @@ class GempyFaultModel(Gempy):
             'rest_layer_points': self.rest_layer_points.clone(),
             'number_of_layer': self.number_of_layer,
             'number_of_points_per_surface': self.number_of_points_per_surface.clone(),
-            'sp_coord': copy.deepcopy(self.sp_coord) # Added sp_coord for safety
+            'sp_coord': copy.deepcopy(self.sp_coord) 
         }
         return state
 
@@ -109,7 +104,6 @@ class GempyFaultModel(Gempy):
         '''
         Load fault points -> Solves fault kriginng -> Saves the result
         Load Strcuture points -> Solves Strcuture kriginng -> Saves the result
-
         
         '''
         
@@ -239,6 +233,12 @@ class GempyFaultModel(Gempy):
             drift = self.transform_function(fault_scalars, grid_coord, self.fault_threshold)
             deformed_coords = grid_coord + drift
 
+            # print(grid_coord)
+            # print(drift)
+            # print(deformed_coords)
+
+            # exit()
+
             # print(f"fault_out in single case:{fault_out}")
             # print(f"fault_scalars in single case:{fault_scalars}")
             # print(f"fault_scalars mean in single case:{torch.mean(fault_scalars)}")
@@ -269,6 +269,8 @@ class GempyFaultModel(Gempy):
         Overrides the parent method. Plotter method call this function.
         We simply redirect it to our custom logic.
         """
+
+        print("This function")
         return self.compute_faulted_grid(grid_coord)
     
     ####### PLOTTING SCALAR FIELD FOR - FAULT, STRUCTURE, RESULTANT ##############
@@ -277,7 +279,7 @@ if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
     extent = [-0.1, 1.1, 0.1, 0.9, -0.5, 0.90, 0, 5]
-    resolution = [100, 50, 50, 2]
+    resolution = [50, 50, 50, 2]
 
     # Initialize Custom Model
     model = GempyFaultModel("fault_relation_example", extent, resolution)
@@ -382,10 +384,10 @@ if __name__ == "__main__":
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -408,5 +410,5 @@ if __name__ == "__main__":
 
 
     # --- PLOTTING ---
-    model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
+    # model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
    
