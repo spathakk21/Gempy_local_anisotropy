@@ -238,7 +238,7 @@ class GempyMultiFaultModel(Gempy):
 if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
-    extent = [-0.1, 1.1, -0.1, 1.1, -0.1, 1.1, 0.0, 5.0]
+    extent = [-.5, 1.1, -.5, 1.1, -.5, 1.1, 0.0, 5.0]
     resolution = [50, 50, 50, 10]
 
     # Initialize Custom Model
@@ -1026,7 +1026,50 @@ if __name__ == "__main__":
          [-0.2618, -0.1514,  0.9532,  0.0000]])
 }
 
-    struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.0],dtype=torch.float32))
+# #####################################################
+# BLOCK - 1
+    x_positions1 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions1 > -0.1) & (x_positions1 <0.0)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.1
+
+    x_positions2 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions2 > 0.0) & (x_positions2 <0.1)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.1
+# #####################################################
+
+# BLOCK - 2
+    
+    x_positions3 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions3 > 0.3) & (x_positions3 <0.4)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.2
+
+
+    x_positions4 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask2 = (x_positions4 > 0.6) & (x_positions4 <0.7)
+
+    struct_orientation_data['Values'][hanging_wall_mask2, 3] = 0.1
+
+# #####################################################
+# BLOCK - 3
+
+    x_positions5 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions5 > 0.8) & (x_positions5 <0.9)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.025
+
+    x_positions6 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions6 > 0.9) & (x_positions6 <1.1)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = 0.025
+
+# #####################################################
+
+
+
+    struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
     struct_input = {'sp_coord': struct_interface_data, 
                     'op_coord': struct_orientation_data, 
@@ -1042,17 +1085,17 @@ if __name__ == "__main__":
     #########################################################################
 
     #### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
-        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=False)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0]:
+    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     #### FOR 3D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=False)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=False)
+        time.sleep(1)
 
 
     #############################################################################################
@@ -1067,4 +1110,4 @@ if __name__ == "__main__":
     # 
 
     # --- PLOTTING ---
-    model.plot_interactive_section(plot_input_data=False, only_surface_mode= False)
+    # model.plot_interactive_section(plot_input_data=False, only_surface_mode= False)
