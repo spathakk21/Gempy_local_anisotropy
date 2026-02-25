@@ -2,8 +2,6 @@ import os
 from functools import partial
 import torch
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 # import pyvista as pv
 
@@ -507,7 +505,6 @@ class Gempy(grid):
             F_gradients[:, start_col:end_col] = dF_grad[:, :, u]
 
     
-
         ########### Calculating Basis function value at Interface Points ######################
 
         # Using (reference - rest) for all the layers
@@ -554,6 +551,8 @@ class Gempy(grid):
     
     def Solution_grid(self, grid_coord, section_plot= False, recompute_weights=True):
         
+        # print("Original function")
+
         # INPUT --> grid_coord: grid points to evaluate
 
         # Optimization: Only solve the linear system if requested or if weights don't exist
@@ -773,7 +772,7 @@ class Gempy(grid):
         ##### Plot surface points and gradients
         ########################################################################################
         if plot_input_data:
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 plt.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], colour[i])
@@ -848,7 +847,7 @@ class Gempy(grid):
         ########################################################################################
         if plot_input_data:
             
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 ax.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], values[:,accepted_index[2]], colour[i])
@@ -1208,47 +1207,29 @@ def main():
    
 
     interface_data = {
-    "rock1": torch.tensor([
-        [0.0, 200.0, 600.0, 0.0],
-        [0.0, 500.0, 600.0, 0.0],
-        [0.0, 800.0, 600.0, 0.0],
-        [200.0, 200.0, 600.0, 0.0],
-        [200.0, 500.0, 600.0, 0.0],
-        [200.0, 800.0, 600.0, 0.0],
-        [800.0, 200.0, 200.0, 0.0],
-        [800.0, 500.0, 200.0, 0.0],
-        [800.0, 800.0, 200.0, 0.0],
-        [1000.0, 200.0, 200.0, 0.0],
-        [1000.0, 500.0, 200.0, 0.0],
-        [1000.0, 800.0, 200.0, 0.0],
-    ]) / 1000,
-
-    "rock2": torch.tensor([
-        [0.0, 200.0, 800.0, 0.0],
-        [0.0, 800.0, 800.0, 0.0],
-        [200.0, 200.0, 800.0, 0.0],
-        [200.0, 800.0, 800.0, 0.0],
-        [800.0, 200.0, 400.0, 0.0],
-        [800.0, 800.0, 400.0, 0.0],
-        [1000.0, 200.0, 400.0, 0.0],
-        [1000.0, 800.0, 400.0, 0.0],
-    ]) / 1000
+    'fault': torch.tensor([
+        [500.0, 500.0, 500.0, 0.0],
+        [450.0, 500.0, 600.0, 0.0],
+        [500.0, 200.0, 500.0, 0.0],
+        [450.0, 200.0, 600.0, 0.0],
+        [500.0, 800.0, 500.0, 0.0],
+        [450.0, 800.0, 600.0, 0.0],
+        
+         ## NEW POINTS
+        [500.0, 800.0, 510.0, 0.0],
+        [450.0, 800.0, 590.0, 0.0]
+        
+        ])/1000
     
 }
 
     orientation_data = {
-    "Positions": torch.tensor([
-        [100.0, 500.0, 800.0, 0.0],
-        [100.0, 500.0, 600.0, 0.0],
-        [900.0, 500.0, 400.0, 0.0],
-        [900.0, 500.0, 200.0, 0.0],
+    'Positions': torch.tensor([
+       [500.0, 500.0, 500.0, 0]  
     ]) / 1000,
 
-    "Values": torch.tensor([
-        [0.000, 0.000, 1.000, 0.0],
-        [0.000, 0.000, 1.000, 0.0],
-        [0.000, 0.000, 1.000, 0.0],
-        [0.000, 0.000, 1.000, 0.0],
+        "Values": torch.tensor([
+        [0.894, 0.000, 0.447, 0.0]
     ])
 }
     
@@ -1832,17 +1813,17 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     #############################################################################################

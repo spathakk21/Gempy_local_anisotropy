@@ -403,7 +403,13 @@ class Gempy(grid):
         
 
         interpolate_result = sigma_0_grad+ sigma_0_interf
+
+        # print(f"sigma_0_grad: {sigma_0_grad}")
+        # print(f"sigma_0_interf: {sigma_0_interf}")
+        # print(f"interpolate_result: {interpolate_result}")
+        
         #print("interpolate_result ", interpolate_result.shape)
+        
         scalar_field={}
         scalar_field["scalar_ref_points"] = interpolate_result[-self.number_of_layer:]
         if section_plot == False:
@@ -518,7 +524,17 @@ class Gempy(grid):
         for keys, _ in self.sp_coord.items():
             label_map[i+1] = keys
             i = i+1 
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
         plt.legend(handles=legend_handles, title='Layers')
         plt.xlabel(axis_label[accepted_index[0]] + " Coordinates")
         plt.ylabel(axis_label[accepted_index[1]] + " Coordinates")
@@ -528,7 +544,7 @@ class Gempy(grid):
         ##### Plot surface points and gradients
         ########################################################################################
         if plot_input_data:
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko']
             i=0
             for _, values in self.sp_coord.items():
                 plt.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], colour[i])
@@ -573,7 +589,16 @@ class Gempy(grid):
             label_map[i+1] = keys
             i = i+1 
         
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        ###############################
         plt.legend(handles=legend_handles, title='Layers',loc="upper left")
         
         ################################################################################
@@ -603,7 +628,7 @@ class Gempy(grid):
         ########################################################################################
         if plot_input_data:
             
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko']
             i=0
             for _, values in self.sp_coord.items():
                 ax.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], values[:,accepted_index[2]], colour[i])
@@ -1015,9 +1040,15 @@ def main():
     #     [ 0.174, 0.0, 0.985, 0.10]   
     # ])}
 
-    #### CHECKING jan_models dataset model5 (without fault)
+    #### CHECKING jan_models dataset model5 (fault)
 
-    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
+    # Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
+
+    Transformation_matrix = torch.tensor([[1.,  0.0000,  0, 0.0],
+        [ 0.0000,  1.0,  0.0000,  0],
+        [0,  0.0000,  1.0,  0.0],
+        [ 0.0,  0, 0.0000,  0]])
+
 
     gp = Gempy("Strata_model", 
                extent = [-0.1, 1.1, 0.1, 0.9, 0.1, 0.90, 0, 5],
@@ -1027,47 +1058,25 @@ def main():
    
 
     interface_data = {
-    "rock1": torch.tensor([
-        [0.0, 200.0, 600.0, 0.0],
-        [0.0, 500.0, 600.0, 0.0],
-        [0.0, 800.0, 600.0, 0.0],
-        [200.0, 200.0, 600.0, 0.0],
-        [200.0, 500.0, 600.0, 0.0],
-        [200.0, 800.0, 600.0, 0.0],
-        [800.0, 200.0, 200.0, 0.0],
-        [800.0, 500.0, 200.0, 0.0],
-        [800.0, 800.0, 200.0, 0.0],
-        [1000.0, 200.0, 200.0, 0.0],
-        [1000.0, 500.0, 200.0, 0.0],
-        [1000.0, 800.0, 200.0, 0.0],
-    ]) / 1000,
-
-    "rock2": torch.tensor([
-        [0.0, 200.0, 800.0, 0.0],
-        [0.0, 800.0, 800.0, 0.0],
-        [200.0, 200.0, 800.0, 0.0],
-        [200.0, 800.0, 800.0, 0.0],
-        [800.0, 200.0, 400.0, 0.0],
-        [800.0, 800.0, 400.0, 0.0],
-        [1000.0, 200.0, 400.0, 0.0],
-        [1000.0, 800.0, 400.0, 0.0],
-    ]) / 1000
+    'fault': torch.tensor([
+        [500.0, 500.0, 500.0, 0.0],
+        [450.0, 500.0, 600.0, 0.0],
+        [500.0, 200.0, 500.0, 0.0],
+        [450.0, 200.0, 600.0, 0.0],
+        [500.0, 800.0, 500.0, 0.0],
+        [450.0, 800.0, 600.0, 0.0],
+        
+        ])/1000
     
 }
 
     orientation_data = {
-    "Positions": torch.tensor([
-        [100.0, 500.0, 800.0, 0.0],
-        [100.0, 500.0, 600.0, 0.0],
-        [900.0, 500.0, 400.0, 0.0],
-        [900.0, 500.0, 200.0, 0.0],
+    'Positions': torch.tensor([
+       [500.0, 500.0, 500.0, 0]  
     ]) / 1000,
 
-    "Values": torch.tensor([
-        [0.000, 0.000, 1.000, 0.0],
-        [0.000, 0.000, 1.000, 0.0],
-        [0.000, 0.000, 1.000, 0.0],
-        [0.000, 0.000, 1.000, 0.0],
+        "Values": torch.tensor([
+        [0.894, 0.000, 0.447, -0.1]
     ])
 }
 
@@ -1102,10 +1111,10 @@ def main():
 
 
     ##### FOR 3D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     #############################################################################################
@@ -1117,8 +1126,8 @@ def main():
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
-    print("\nStarting Interactive Visualization...")
-    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    # print("\nStarting Interactive Visualization...")
+    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
 
 if __name__ == "__main__":
