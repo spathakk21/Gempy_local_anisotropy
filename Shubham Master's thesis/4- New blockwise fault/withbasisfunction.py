@@ -762,7 +762,19 @@ class Gempy(grid):
         for keys, _ in self.sp_coord.items():
             label_map[i+1] = keys
             i = i+1 
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
+
+
         plt.legend(handles=legend_handles, title='Layers')
         plt.xlabel(axis_label[accepted_index[0]] + " Coordinates")
         plt.ylabel(axis_label[accepted_index[1]] + " Coordinates")
@@ -817,7 +829,17 @@ class Gempy(grid):
             label_map[i+1] = keys
             i = i+1 
         
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
         plt.legend(handles=legend_handles, title='Layers',loc="upper left")
         
         ################################################################################
