@@ -25,7 +25,7 @@ class GempyFaultModel(Gempy):
         self.hw_state = None  # Hanging wall (Zone 1)
         self.fw_state = None  # Footwall (Zone 2)
 
-        # Stores scalar value that defines where the fault plane is.
+        # Stores scalar value that defines where the fault plane is (default value for initialization)
         self.fault_threshold = 0.0 
 
     def save_internal_state(self):
@@ -68,7 +68,7 @@ class GempyFaultModel(Gempy):
 
         Evaluates Fault field at Structural Data coordinates ->
 
-        Partitions data into Hanging Wall and Footwall arrays ->
+        Partitions/Masks data into Hanging Wall and Footwall arrays by using Fautl weights ->
 
         Interpolates HW block and FW block independently.
         '''
@@ -83,27 +83,27 @@ class GempyFaultModel(Gempy):
         self.orientation_data(fault_data['op_coord'])
         # Transformation matrix if given otherwise take it as a diagonal matrix [1,1,1,0]
         self.Transformation_matrix = fault_data.get('transformation_matrix', torch.diag(torch.tensor([1,1,1,0])))
-            
+
+        # Solves Fault model    
         self.Ge_model() 
-        # Saving fault model
+        # Saving fault model parameters like weights, etc
         self.fault_state = self.save_internal_state()
 
-        # Calculating scalar field from 4D GemPy super class
-        # And capturing the scalar_field output as fault_out
+        # Calculating scalar field from 4D GemPy super class and capturing the scalar_field output as fault_out
         # Calculating fault threshold (evaluating scalar at fault reference points)
         fault_out, _ = super().Solution_grid(self.ref_layer_points, section_plot=True, recompute_weights=False)
         if "scalar_ref_points" in fault_out:
             # capturing mean of reference points of fault
             self.fault_threshold = torch.mean(fault_out["scalar_ref_points"])
 
-        print(f" Fault threshold is: {self.fault_threshold}")
+        # print(f" Fault threshold is: {self.fault_threshold}")
 
 
 
         ######### Partitioning Data into footwall and hanging wall #########
         print("\n Partitioning Structural Data (Zone 1 vs Zone 2)")
         
-        # Take default transformation matrix [1,1,1,0] if not provided
+        # Take default transformation matrix diag[1,1,1,0] for structure if not provided
         struct_matrix = structure_data.get('transformation_matrix', torch.diag(torch.tensor([1,1,1,0])))
         
         # For storing hanging wall data
@@ -113,22 +113,30 @@ class GempyFaultModel(Gempy):
         
         # Splitting Interface Points
         for layer_name, points in structure_data['sp_coord'].items():
-            # Evaluate the fault scalar field exactly at these input coordinates
+
+            # Evaluate the fault scalar field(using fault weights) exactly at these input coordinates
             fault_scalars, _ = super().Solution_grid(points, section_plot=True, recompute_weights=False)
             scalars = fault_scalars["Regular"]
             
             # hanging wall block if scalar field value is greater than fault threshold
             hw_mask = (scalars > self.fault_threshold).squeeze()
 
+            
 
             # foot wall block if scalar field value is less than fault threshold
             fw_mask = ~hw_mask
+
+            # print(f"Hw_mask: {hw_mask}")
+            # print(f"Fw_mask: {fw_mask}")
             
             # Saving points in pre-defined dictionaries
             if hw_mask.sum() > 0:
                 hw_struct_data['sp_coord'][layer_name] = points[hw_mask]
             if fw_mask.sum() > 0:
                 fw_struct_data['sp_coord'][layer_name] = points[fw_mask]
+
+            # print(f"hw_struct_data: {hw_struct_data}")
+            # print(f"fw_struct_data: {fw_struct_data}")
                 
         # Splitting Orientation Points in same way
         op_pos = structure_data['op_coord']['Positions']
@@ -139,6 +147,10 @@ class GempyFaultModel(Gempy):
         
         hw_mask = (scalars > self.fault_threshold).squeeze()
         fw_mask = ~hw_mask
+
+        # For checking orientation points
+        # print(f"Hw_mask: {hw_mask}")
+        # print(f"Fw_mask: {fw_mask}")
         
         if hw_mask.sum() > 0:
             hw_struct_data['op_coord']['Positions'] = op_pos[hw_mask]
@@ -146,6 +158,11 @@ class GempyFaultModel(Gempy):
         if fw_mask.sum() > 0:
             fw_struct_data['op_coord']['Positions'] = op_pos[fw_mask]
             fw_struct_data['op_coord']['Values'] = op_val[fw_mask]
+
+        # For checking orientation points
+        # print(f"hw_struct_data: {hw_struct_data}")
+        # print(f"fw_struct_data: {fw_struct_data}")
+
 
         #########  Solving Zone 1: Hanging Wall #########
         self.hw_state = None
@@ -159,6 +176,7 @@ class GempyFaultModel(Gempy):
             
             #Solving hanging wall
             self.Ge_model()
+            # Saving hanging wall params
             self.hw_state = self.save_internal_state()
         else:
             print("\nWarning: Not enough data for Hanging Wall interpolation. Ensure orientations exist on both sides.")
@@ -175,6 +193,8 @@ class GempyFaultModel(Gempy):
            
             #Solving foot wall
             self.Ge_model()
+        
+            # Saving foot wall params
             self.fw_state = self.save_internal_state()
         else:
              print("\nWarning: Not enough data for Footwall interpolation. Ensure orientations exist on both sides.")
@@ -185,10 +205,10 @@ class GempyFaultModel(Gempy):
         self.Position_G = torch.cat([fault_data['op_coord']['Positions'], structure_data['op_coord']['Positions']], dim=0)
         self.Value_G = torch.cat([fault_data['op_coord']['Values'], structure_data['op_coord']['Values']], dim=0)
         
-        # A dummy weights tensor to trick the parent visualization function
+        # A dummy weight tensor to trick the parent visualization function
         self.w = torch.zeros(1) 
 
-        print("Model computation successfully completed.")
+        print("Model computation successfully for each zone.")
 
     def compute_faulted_grid(self, grid_coord=None):
         """
@@ -202,12 +222,14 @@ class GempyFaultModel(Gempy):
             grid_coord = self.data["Regular"]
 
         # BACKUP combined state (needed for plotting dots later)
-         # We need to save the current state (which holds all points for plotting)
+        # We need to save the current state (which holds all points for plotting)
         combined_backup = self.save_internal_state()
 
         try:
-            # Evaluate Fault Block Mask
+            # Evaluate Fault Block Mask for whole grid
             self.load_internal_state(self.fault_state)
+
+            # Calculating scalar field on whole grid using fault model weights
             fault_out, _ = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
             fault_scalars = fault_out["Regular"]
 
@@ -220,11 +242,15 @@ class GempyFaultModel(Gempy):
             # Evaluate Hanging Wall Structural Grid
             if self.hw_state is not None:
                 self.load_internal_state(self.hw_state)
+
+                # Calculating scalar field on whole grid using hanging wall model weights
                 struct_out_hw, struct_res_hw = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
                 
             # Evaluate Footwall Structural Grid
             if self.fw_state is not None:
                 self.load_internal_state(self.fw_state)
+
+                # Calculating scalar field on whole grid using foot wall model weights
                 struct_out_fw, struct_res_fw = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
                 
             # IMPORTANT: Stitch Outputs based on Fault Mask
@@ -358,10 +384,10 @@ if __name__ == "__main__":
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
-        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
+    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####

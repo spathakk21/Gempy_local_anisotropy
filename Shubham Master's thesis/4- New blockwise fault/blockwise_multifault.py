@@ -23,7 +23,7 @@ class GempyMultiFaultModel(Gempy):
         super().__init__(project_name, extent, resolution)
         
         # Storing independent kriging systems
-        # Dictionaries to store N fault models and N block models
+        # Dictionaries to store N fault models + thresholds and (N+1) block models
         self.fault_states = {}
         self.fault_thresholds = {}
 
@@ -62,7 +62,11 @@ class GempyMultiFaultModel(Gempy):
         self.sp_coord = state['sp_coord']
 
     def eval_fault_at_points(self, fault_name, points):
-        """Evaluates a specific fault's scalar field at given coordinates."""
+        """ 
+        Kind of a helper function.
+        
+        Evaluates a specific fault's scalar field at given coordinates
+        """
         self.load_internal_state(self.fault_states[fault_name])
         out, _ = super().Solution_grid(points, section_plot=True, recompute_weights=False)
         return out["Regular"]
@@ -70,10 +74,12 @@ class GempyMultiFaultModel(Gempy):
     def compute_models(self, faults_data, structure_data):
         '''
         faults_data: Dictionary of multiple faults e.g., {'Fault1': f1_data, 'Fault2': f2_data}
+        structure_data: As in previous file
         '''
 
         # Default transformation matrix if not provided
         default_matrix = torch.diag(torch.tensor([1,1,1,0]))
+        #Extracting all fault names provided
         self.fault_names = list(faults_data.keys())
         
         ######### Solving All Fault Models #########
@@ -90,9 +96,10 @@ class GempyMultiFaultModel(Gempy):
             self.orientation_data(f_data['op_coord'])
             self.Transformation_matrix = f_data.get('transformation_matrix', default_matrix)
             
+            # Solving currect fault model
             self.Ge_model() 
-            # Saving current fault model
 
+            # Saving current fault model
             self.fault_states[f_name] = self.save_internal_state()
 
             # Capture current fault threshold
@@ -100,13 +107,22 @@ class GempyMultiFaultModel(Gempy):
             # capturing mean of reference points of current fault
             self.fault_thresholds[f_name] = torch.mean(out["scalar_ref_points"])
 
-        ######### Partitioning Data by Boolean Signatures #########
+        ######### Partitioning Data by using Boolean Signatures #########
         print("\n- Partitioning Structural Data into Blocks -")
+
+        # Dictionary to store fault separated blocks
         blocks_struct_data = {}
 
         def get_signatures(points):
-            """Returns a list of boolean tuples representing the 
-            block signature for each point."""
+            """
+            Helper function
+
+            "Takes a list of structural data points and evaluates them against every fault solution"
+
+            Returns a list of boolean tuples representing the 
+            block signature for each point
+            
+            """
             if len(points) == 0: return []
 
             sigs = [] #signatures
@@ -115,17 +131,23 @@ class GempyMultiFaultModel(Gempy):
                 scalars = self.eval_fault_at_points(f_name, points).squeeze()
                 if scalars.dim() == 0: scalars = scalars.unsqueeze(0)
                 mask = scalars > self.fault_thresholds[f_name]
+                
+                # Appending True for false for all points according to current fault (f_name)
                 sigs.append(mask)
 
             
             
-            # Stack and convert to rows of tuples
+            # Stack boolean signatures and convert to rows of tuples
             sigs_stacked = torch.stack(sigs, dim=1)
             return [tuple(row.tolist()) for row in sigs_stacked]
 
-        # Route Interface Points to correct block dictionary
+        # Marking Interface Points to correct block dictionary(booleans)
         for layer_name, points in structure_data['sp_coord'].items():
             sigs = get_signatures(points)
+            
+            #Check
+            # print(f"Signatues are: {sigs}")
+         
             for i, sig in enumerate(sigs):
 
                 # Drops a value in blocks_struct_data which tells where the
@@ -142,11 +164,18 @@ class GempyMultiFaultModel(Gempy):
         op_val = structure_data['op_coord']['Values']
         sigs = get_signatures(op_pos)
         
+        #Check
+        # print(f"Orientation point sigantures: {sigs}")
+
+
         for i, sig in enumerate(sigs):
             if sig not in blocks_struct_data:
                 blocks_struct_data[sig] = {'sp_coord': {}, 'op_coord': {'Positions': [], 'Values': []}}
             blocks_struct_data[sig]['op_coord']['Positions'].append(op_pos[i])
             blocks_struct_data[sig]['op_coord']['Values'].append(op_val[i])
+
+        # Check
+        # print(f"Block data dictionary: {blocks_struct_data}")
 
         # Convert grouped lists back to PyTorch tensors
         for sig in blocks_struct_data:
@@ -156,8 +185,13 @@ class GempyMultiFaultModel(Gempy):
                 blocks_struct_data[sig]['op_coord']['Positions'] = torch.stack(blocks_struct_data[sig]['op_coord']['Positions'])
                 blocks_struct_data[sig]['op_coord']['Values'] = torch.stack(blocks_struct_data[sig]['op_coord']['Values'])
 
+        # print(f"Block data tensor: {blocks_struct_data}")
+
         ######### Solve Kriging for Each Populated Block #########
+
+        #For Storing block states/parameters
         self.block_states = {}
+
         for sig, data in blocks_struct_data.items():
             has_interfaces = len(data['sp_coord']) > 0
             has_orientations = len(data['op_coord']['Positions']) > 0
@@ -167,12 +201,15 @@ class GempyMultiFaultModel(Gempy):
                 self.interface_data(data['sp_coord'])
                 self.orientation_data(data['op_coord'])
                 self.Transformation_matrix = structure_data.get('transformation_matrix', default_matrix)
+
+                #Solving each block
                 self.Ge_model()
+                #Saving each block with signature
                 self.block_states[sig] = self.save_internal_state()
             else:
                 print(f"\nWarning: Block {sig} skipped (Needs at least 1 interface and 1 orientation point in this block).")
 
-        # print(blocks_struct_data)
+        # Saved data
         # print(self.block_states)
 
 
@@ -187,7 +224,7 @@ class GempyMultiFaultModel(Gempy):
         self.Position_G = torch.cat(all_op_pos, dim=0)
         self.Value_G = torch.cat(all_op_val, dim=0)
 
-        # For plotter
+        # Default weights for first plotter
         self.w = torch.zeros(1) 
 
     def compute_faulted_grid(self, grid_coord=None):
@@ -202,14 +239,22 @@ class GempyMultiFaultModel(Gempy):
         combined_backup = self.save_internal_state()
 
         try:
-            # Evaluate all fault boundaries on the 3D Grid and
-            # Creating all fault masks
+            # Evaluate all fault boundaries/model on the 3D Grid and
+            
             grid_fault_masks = {}
             for f_name in self.fault_names:
                 self.load_internal_state(self.fault_states[f_name])
+
+                # Calculating scalar field on whole grid using current fault model weights
                 out, _ = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
+                
+                # Creating fault masks for each fault on the whole grid
                 grid_fault_masks[f_name] = out["Regular"] > self.fault_thresholds[f_name]
 
+            #Check
+            # print(f"Grid_fault_masks are: {grid_fault_masks}")
+            # print(f"Grid_fault_masks are: {grid_fault_masks["fault1"].shape}")
+           
             # Evaluate all populated structural blocks independently assuming fault do not exit
             block_outputs, block_res = {}, {}
             for sig in self.block_states:
@@ -218,18 +263,26 @@ class GempyMultiFaultModel(Gempy):
                 block_outputs[sig] = out
                 block_res[sig] = res
 
+            # print(f"Block outputs:{block_outputs}")
+
+
             if not block_outputs:
                 raise ValueError("No valid structural blocks were computed!")
 
-            # 3. Stitch blocks together based on Boolean Signatures
+            # Stitch blocks together based on Boolean Signatures for plotting
+            # Initializing final output
             final_out, final_res = {}, {}
+
+            #Leftmost block signature
             template_sig = list(block_outputs.keys())[0]
-            
-            # Initialize empty tensors
+            # print(template_sig)
+
+            # Initialize empty tensors for the grid
             for k in block_outputs[template_sig].keys():
                 final_out[k] = block_outputs[template_sig][k] if k == 'scalar_ref_points' else torch.zeros_like(block_outputs[template_sig][k])
             for k in block_res[template_sig].keys():
                 final_res[k] = block_res[template_sig][k] if k == 'ref_points' else torch.zeros_like(block_res[template_sig][k])
+
 
             # Apply masking
             for sig, out_dict in block_outputs.items():
@@ -237,12 +290,15 @@ class GempyMultiFaultModel(Gempy):
                 block_mask = torch.ones_like(grid_fault_masks[self.fault_names[0]], dtype=torch.bool)
                 for i, f_name in enumerate(self.fault_names):
                     expected = sig[i]
+
+                    # Using both block boolean signature and grid_fault_mask 
+                    # And taking common regions
                     if expected:
                         block_mask = block_mask & grid_fault_masks[f_name]
                     else:
                         block_mask = block_mask & (~grid_fault_masks[f_name])
 
-                # Fill data into final output where the mask is True
+                # Fill data into final output where the common mask is True
                 for k in out_dict.keys():
                     if k != 'scalar_ref_points':
                         final_out[k] = torch.where(block_mask, out_dict[k], final_out[k])
@@ -256,6 +312,12 @@ class GempyMultiFaultModel(Gempy):
             self.load_internal_state(combined_backup)
 
     def Solution_grid(self, grid_coord=None, section_plot=False, recompute_weights=True):
+
+        """ 
+        Overriding function.
+        
+        Function to stop new Solution_grid calculation inside the plotting method
+        """
         return self.compute_faulted_grid(grid_coord)
 
 
@@ -394,10 +456,10 @@ if __name__ == "__main__":
 
 
     #### FOR 3D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     #############################################################################################

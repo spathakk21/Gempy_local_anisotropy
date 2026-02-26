@@ -1150,7 +1150,7 @@ class Gempy(grid):
                 arrows = pv.PolyData(pos_g)
                 arrows["vectors"] = vec_g
                 # "Glyph" filters scale geometry (arrows) at every point
-                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.4)
+                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.1)
                 
                 plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
 
