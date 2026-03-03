@@ -527,6 +527,14 @@ class Gempy(grid):
         ###### [F  0 ]
 
         zeros_corner = torch.zeros(L, L)
+
+        # Add a tiny 'Drift Penalty' (Ridge Regularization)
+        # This tells the solver: "If you don't have enough points to figure out 
+        # a polynomial coefficient, just set it to 0 instead of crashing."
+        # drift_penalty = 1e1
+        # zeros_corner = torch.zeros(L, L) - (torch.eye(L) * drift_penalty)
+
+
         top = torch.cat([K, F_matrix.T], dim=1)
         bottom = torch.cat([F_matrix, zeros_corner], dim=1)
         K_aug = torch.cat([top, bottom], dim=0)
@@ -750,7 +758,12 @@ class Gempy(grid):
             X = self.mesh[0].numpy()
             Y = self.mesh[1].numpy()
             Z = sclar_field.reshape(X.shape).numpy()
-            plt.contour(X, Y, Z)
+            #     plt.contour(X, Y, Z)
+        
+        #### ---
+            contours = plt.contour(X, Y, Z)
+            plt.clabel(contours, inline=True, fontsize=10, colors='black')
+        #### ---
         
         # Create a legend
         
@@ -1229,17 +1242,19 @@ def main():
    
 
     interface_data = {
-    'fault': torch.tensor([
-        [500.0, 500.0, 500.0, 0.0],
-        [450.0, 500.0, 600.0, 0.0],
-        [500.0, 200.0, 500.0, 0.0],
-        [450.0, 200.0, 600.0, 0.0],
-        [500.0, 800.0, 500.0, 0.0],
-        [450.0, 800.0, 600.0, 0.0],
-        
-         ## NEW POINTS
-        [500.0, 800.0, 510.0, 0.0],
-        [450.0, 800.0, 590.0, 0.0]
+    'rock1': torch.tensor([
+         [500.0, 500.0, 500.0, 0.0],
+         [400.0, 600.0, 500.0, 0.0],
+
+        #  [100.0, 200.0, 500.0, 0.0],
+        #  [200.0, 300.0, 500.0, 0.0],
+        #  [300.0, 400.0, 500.0, 0.0],
+        #  [600.0, 700.0, 500.0, 0.0],
+        #  [700.0, 800.0, 500.0, 0.0],
+        #  [800.0, 800.0, 500.0, 0.0],
+
+
+
         
         ])/1000
     
@@ -1247,11 +1262,11 @@ def main():
 
     orientation_data = {
     'Positions': torch.tensor([
-       [500.0, 500.0, 500.0, 0]  
+       [400.0, 500.0, 500.0, 0]  
     ]) / 1000,
 
         "Values": torch.tensor([
-        [0.894, 0.000, 0.447, 0.0]
+        [0.0, 0.000, 1.0, 0.0]
     ])
 }
     
@@ -1835,10 +1850,10 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -1858,7 +1873,7 @@ def main():
     ###############################################################
 
     print("\nStarting Interactive Visualization...")
-    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
     
 if __name__ == "__main__":
