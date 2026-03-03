@@ -238,8 +238,8 @@ class GempyMultiFaultModel(Gempy):
 if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
-    extent = [-.5, 1.1, -.5, 1.1, -.5, 1.1, 0.0, 5.0]
-    resolution = [50, 50, 50, 10]
+    extent = [-0.5, 1.6, -0.5, 1.6, -0.5, 1.0, 0.0, 5.0]
+    resolution = [40, 40, 40, 10]
 
     # Initialize Custom Model
     model = GempyMultiFaultModel("Gulfaks 4D Model", extent, resolution)
