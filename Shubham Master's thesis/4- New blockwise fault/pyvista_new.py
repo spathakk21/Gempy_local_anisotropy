@@ -512,7 +512,12 @@ class Gempy(grid):
             X = self.mesh[0].numpy()
             Y = self.mesh[1].numpy()
             Z = sclar_field.reshape(X.shape).numpy()
-            plt.contour(X, Y, Z)
+        #     plt.contour(X, Y, Z)
+        
+        #### ---
+            contours = plt.contour(X, Y, Z)
+            plt.clabel(contours, inline=True, fontsize=10, colors='black')
+        #### ---
         
         # Create a legend
         
@@ -1058,13 +1063,9 @@ def main():
    
 
     interface_data = {
-    'fault': torch.tensor([
+    'rock1': torch.tensor([
         [500.0, 500.0, 500.0, 0.0],
-        [450.0, 500.0, 600.0, 0.0],
-        [500.0, 200.0, 500.0, 0.0],
-        [450.0, 200.0, 600.0, 0.0],
-        [500.0, 800.0, 500.0, 0.0],
-        [450.0, 800.0, 600.0, 0.0],
+        [400.0, 600.0, 500.0, 0.0]
         
         ])/1000
     
@@ -1072,11 +1073,11 @@ def main():
 
     orientation_data = {
     'Positions': torch.tensor([
-       [500.0, 500.0, 500.0, 0]  
+       [400.0, 500.0, 500.0, 0]  
     ]) / 1000,
 
         "Values": torch.tensor([
-        [0.894, 0.000, 0.447, -0.1]
+        [0.0, 0.000, 1, 0.0]
     ])
 }
 
