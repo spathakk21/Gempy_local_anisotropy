@@ -132,7 +132,7 @@ class GempyMultiFaultModel(Gempy):
                 if scalars.dim() == 0: scalars = scalars.unsqueeze(0)
                 mask = scalars > self.fault_thresholds[f_name]
                 
-                # Appending True for false for all points according to current fault (f_name)
+                # Appending True or false for all points according to current fault (f_name)
                 sigs.append(mask)
 
             
@@ -185,7 +185,7 @@ class GempyMultiFaultModel(Gempy):
                 blocks_struct_data[sig]['op_coord']['Positions'] = torch.stack(blocks_struct_data[sig]['op_coord']['Positions'])
                 blocks_struct_data[sig]['op_coord']['Values'] = torch.stack(blocks_struct_data[sig]['op_coord']['Values'])
 
-        # print(f"Block data tensor: {blocks_struct_data}")
+        print(f"Block data tensor: {blocks_struct_data}")
 
         ######### Solve Kriging for Each Populated Block #########
 
@@ -332,107 +332,98 @@ if __name__ == "__main__":
     # --- 1. FAULT DATA ---
     fault1_interface_data = {
         'fault1': torch.tensor([
-            [500., 500., 500.,   0.],
-            [450., 500., 600.,   0.],
-            [500., 200., 500.,   0.],
-            [450., 200., 600.,   0.],
-            [500., 800., 500.,   0.],
-            [450., 800., 600.,   0.]
+            [250., 200., 800.,   0.], [250., 800., 800.,   0.], # Top
+            [350., 200., 500.,   0.], [350., 800., 500.,   0.], # Middle
+            [450., 200., 200.,   0.], [450., 800., 200.,   0.]  # Bottom
         ]) / 1000
     }
     fault1_orientation_data = {
-        'Positions': torch.tensor([[500., 500., 500.,   0.]]) / 1000,
-        "Values": torch.tensor([[0.866, 0.0, 0.5, 0.]])
+        'Positions': torch.tensor([[350., 500., 500.,   0.]]) / 1000,
+        # Normal vector pointing perpendicular to the 71-degree dip
+        "Values": torch.tensor([[0.948, 0.0, 0.316, 0.]]) 
     }
     fault1_transformation_matrix = torch.diag(torch.tensor([1, 1, 1, 0.01], dtype=torch.float32))
 
+    # Fault 2: Parallel to Fault 1. Top is at X=700, Bottom is at X=900.
     fault2_interface_data = {
         'fault2': torch.tensor([
-            [700., 500., 500.,   0.],
-            [650., 500., 600.,   0.],
-            [700., 200., 500.,   0.],
-            [650., 200., 600.,   0.],
-            [700., 800., 500.,   0.],
-            [650., 800., 600.,   0.]
+            [700., 200., 800.,   0.], [700., 800., 800.,   0.], # Top
+            [800., 200., 500.,   0.], [800., 800., 500.,   0.], # Middle
+            [900., 200., 200.,   0.], [900., 800., 200.,   0.]  # Bottom
         ]) / 1000
     }
     fault2_orientation_data = {
-        'Positions': torch.tensor([[700., 500., 500.,   0.]]) / 1000,
-        "Values": torch.tensor([[0.866, 0.0, 0.5, 0.]])
+        'Positions': torch.tensor([[800., 500., 500.,   0.]]) / 1000,
+        "Values": torch.tensor([[0.948, 0.0, 0.316, 0.]]) 
     }
     fault2_transformation_matrix = torch.diag(torch.tensor([1, 1, 1, 0.01], dtype=torch.float32))
 
     # Group into the required 'faults_dict' structure
     faults_dict = {
-        'fault1': {
-            'sp_coord': fault1_interface_data, 
-            'op_coord': fault1_orientation_data, 
-            'transformation_matrix': fault1_transformation_matrix
-        },
-        'fault2': {
-            'sp_coord': fault2_interface_data, 
-            'op_coord': fault2_orientation_data, 
-            'transformation_matrix': fault2_transformation_matrix
-        }
+        'fault1': {'sp_coord': fault1_interface_data, 'op_coord': fault1_orientation_data, 'transformation_matrix': fault1_transformation_matrix},
+        'fault2': {'sp_coord': fault2_interface_data, 'op_coord': fault2_orientation_data, 'transformation_matrix': fault2_transformation_matrix}
     }
 
     # --- 2. STRUCTURE DATA ---
     struct_interface_data =  {
         'rock1': torch.tensor([
-            # Left Block (X < 450)
-            [  0.,  200.,  600.,    0.], [  0.,  500.,  600.,    0.], [  0.,  800.,  600.,    0.],
-            [ 200.,  200.,  600.,    0.], [ 200.,  500.,  600.,    0.], [ 200.,  800.,  600.,    0.],
+            # LEFT BLOCK (X: 50 to 150) -> Safe from Fault 1
+            [ 50.,  200.,  600.,    0.], [ 50.,  500.,  600.,    0.], [ 50.,  800.,  600.,    0.],
+            [150.,  200.,  600.,    0.], [150.,  500.,  600.,    0.], [150.,  800.,  600.,    0.],
             
-            # Center Block (X = ~550). I shifted Z to 400 to reflect an offset
-            [ 550.,  200.,  400.,    0.], [ 550.,  500.,  400.,    0.], [ 550.,  800.,  400.,    0.],
+            # MIDDLE BLOCK (X: 500 to 650) -> Safe gap between the faults!
+            # Dropped down slightly by the fault (Z=400)
+            [500.,  200.,  400.,    0.], [500.,  500.,  400.,    0.], [500.,  800.,  400.,    0.],
+            [650.,  200.,  400.,    0.], [650.,  500.,  400.,    0.], [650.,  800.,  400.,    0.],
             
-            # Right Block (X > 700)
-            [ 800.,  200.,  200.,    0.], [ 800.,  500.,  200.,    0.], [ 800.,  800.,  200.,    0.],
-            [1000.,  200.,  200.,    0.], [1000.,  500.,  200.,    0.], [1000.,  800.,  200.,    0.]
+            # RIGHT BLOCK (X: 1000 to 1150) -> Safe from Fault 2
+            # Dropped down further (Z=200)
+            [1000.,  200.,  200.,    0.], [1000.,  500.,  200.,    0.], [1000.,  800.,  200.,    0.],
+            [1150.,  200.,  200.,    0.], [1150.,  500.,  200.,    0.], [1150.,  800.,  200.,    0.]
         ]) / 1000,
         
         'rock2': torch.tensor([
-            # Left Block
-            [  0.,  200.,  800.,    0.], [  0.,  800.,  800.,    0.],
-            [ 200.,  200.,  800.,    0.], [ 200.,  800.,  800.,    0.],
+            # LEFT BLOCK (Z=800)
+            [ 50.,  200.,  800.,    0.], [ 50.,  800.,  800.,    0.],
+            [150.,  200.,  800.,    0.], [150.,  800.,  800.,    0.],
             
-            # Center Block (Shifted Z to 600 to reflect offset)
-            [ 550.,  200.,  600.,    0.], [ 550.,  800.,  600.,    0.],
+            # MIDDLE BLOCK (Dropped to Z=600)
+            [500.,  200.,  600.,    0.], [500.,  800.,  600.,    0.],
+            [650.,  200.,  600.,    0.], [650.,  800.,  600.,    0.],
             
-            # Right Block
-            [ 800.,  200.,  400.,    0.], [ 800.,  800.,  400.,    0.],
-            [1000.,  200.,  400.,    0.], [1000.,  800.,  400.,    0.]
+            # RIGHT BLOCK (Dropped to Z=400)
+            [1000.,  200.,  400.,    0.], [1000.,  800.,  400.,    0.],
+            [1150.,  200.,  400.,    0.], [1150.,  800.,  400.,    0.]
         ]) / 1000
     }
 
     struct_orientation_data = {
         'Positions': torch.tensor([
             # Left Block
-            [100., 500., 800.,   0.],  # rock2
-            [100., 500., 600.,   0.],  # rock1
+            [100., 500., 800.,   100],  # rock2
+            [100., 500., 600.,   100],  # rock1
             
-            # Center Block (ADDED to prevent singular matrix!)
-            [550., 500., 600.,   0.],  # rock2
-            [550., 500., 400.,   0.],  # rock1
+            # Middle Block 
+            [575., 500., 600.,   0.],  # rock2
+            [575., 500., 400.,   0.],  # rock1
             
             # Right Block
-            [900., 500., 400.,   0.],  # rock2
-            [900., 500., 200.,   0.],  # rock1
+            [1075., 500., 400.,   1000],  # rock2
+            [1075., 500., 200.,   1000]   # rock1
         ]) / 1000,
 
         "Values": torch.tensor([
-            [0., 0., 1., 0.1],  # Left rock2
-            [0., 0., 1., 0.1],  # Left rock1
-            [0., 0., 1., 0.0],  # Center rock2 (Flat)
-            [0., 0., 1., 0.0],  # Center rock1 (Flat)
-            [0., 0., 1., -0.1], # Right rock2
-            [0., 0., 1., -0.1]  # Right rock1
+            [0., 0., 1.,  0.1],  # Left moving up
+            [0., 0., 1.,  0.1], 
+            [0., 0., 1.,  0.0],  # Middle stable
+            [0., 0., 1.,  0.0],  
+            [0., 0., 1., -0.1],  # Right moving down
+            [0., 0., 1., -0.1] 
         ])
     }
     
     struct_transformation_matrix = torch.diag(torch.tensor([1, 1, 1, 0.01], dtype=torch.float32))
 
-    # Group structure data into dict
     struct_input = {
         'sp_coord': struct_interface_data, 
         'op_coord': struct_orientation_data,
