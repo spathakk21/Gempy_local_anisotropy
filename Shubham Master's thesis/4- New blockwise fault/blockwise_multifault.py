@@ -3,7 +3,7 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-# Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term
+# Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
 from pyvista_new import Gempy
 
 class GempyMultiFaultModel(Gempy):
@@ -185,7 +185,7 @@ class GempyMultiFaultModel(Gempy):
                 blocks_struct_data[sig]['op_coord']['Positions'] = torch.stack(blocks_struct_data[sig]['op_coord']['Positions'])
                 blocks_struct_data[sig]['op_coord']['Values'] = torch.stack(blocks_struct_data[sig]['op_coord']['Values'])
 
-        print(f"Block data tensor: {blocks_struct_data}")
+        # print(f"Block data tensor: {blocks_struct_data}")
 
         ######### Solve Kriging for Each Populated Block #########
 
@@ -274,16 +274,22 @@ class GempyMultiFaultModel(Gempy):
             final_out, final_res = {}, {}
 
             #Leftmost block signature
+            # to use the datastructure and how many points are in the grid
             template_sig = list(block_outputs.keys())[0]
-            # print(template_sig)
+            # print(f" Template_signature is: {template_sig}")
 
             # Initialize empty tensors for the grid
             for k in block_outputs[template_sig].keys():
+                # Creates new tensors filled with zeros that have the exact same shape as your simulation grid
                 final_out[k] = block_outputs[template_sig][k] if k == 'scalar_ref_points' else torch.zeros_like(block_outputs[template_sig][k])
             for k in block_res[template_sig].keys():
                 final_res[k] = block_res[template_sig][k] if k == 'ref_points' else torch.zeros_like(block_res[template_sig][k])
 
 
+            # print(final_out)
+            # print(final_res)
+
+            #### IMPORTANT ####
             # Apply masking
             for sig, out_dict in block_outputs.items():
                 # Build compound mask for this specific block
@@ -292,13 +298,17 @@ class GempyMultiFaultModel(Gempy):
                     expected = sig[i]
 
                     # Using both block boolean signature and grid_fault_mask 
-                    # And taking common regions
+                    # And taking common/intersecting regions
+
+                    # If signature says true for Fault1, we keep only those grid points where Fault1 mask is true
                     if expected:
                         block_mask = block_mask & grid_fault_masks[f_name]
+
+                    # If signature says true for Fault1, we keep only those grid points where Fault1 mask is true
                     else:
                         block_mask = block_mask & (~grid_fault_masks[f_name])
 
-                # Fill data into final output where the common mask is True
+                # Fill data into final output where the common/intersection mask is True
                 for k in out_dict.keys():
                     if k != 'scalar_ref_points':
                         final_out[k] = torch.where(block_mask, out_dict[k], final_out[k])
