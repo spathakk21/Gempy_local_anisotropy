@@ -253,24 +253,22 @@ class GempyFaultModel(Gempy):
                 # Calculating scalar field on whole grid using foot wall model weights
                 struct_out_fw, struct_res_fw = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
 
-
-            # # ===================================================================
-            # # NEW: SCALAR FIELD NORMALIZATION (Aligning the two blocks)
-            # # ===================================================================
-            # if struct_out_hw is not None and struct_out_fw is not None:
-            #     # 1. Find the average scalar value of the geological interfaces in both blocks
-            #     hw_ref_mean = torch.mean(struct_out_hw['scalar_ref_points'])
-            #     fw_ref_mean = torch.mean(struct_out_fw['scalar_ref_points'])
+            # ===================================================================
+            # NEW: SCALAR FIELD NORMALIZATION (Aligning the two blocks)
+            # ===================================================================
+            if struct_out_hw is not None and struct_out_fw is not None:
+                # 1. Find the average scalar value of the geological interfaces in both blocks
+                hw_ref_mean = torch.mean(struct_out_hw['scalar_ref_points'])
+                fw_ref_mean = torch.mean(struct_out_fw['scalar_ref_points'])
                 
-            #     # 2. Calculate the difference (the mathematical drift between the two solvers)
-            #     scalar_shift = hw_ref_mean - fw_ref_mean
+                # 2. Calculate the difference (the mathematical drift between the two solvers)
+                scalar_shift = hw_ref_mean - fw_ref_mean
                 
-            #     # 3. Apply this shift to the entire Footwall scalar field and its reference points
-            #     struct_out_fw['Regular'] = struct_out_fw['Regular'] + scalar_shift
-            #     struct_out_fw['scalar_ref_points'] = struct_out_fw['scalar_ref_points'] + scalar_shift
+                # 3. Apply this shift to the entire Footwall scalar field and its reference points
+                struct_out_fw['Regular'] = struct_out_fw['Regular'] + scalar_shift
+                struct_out_fw['scalar_ref_points'] = struct_out_fw['scalar_ref_points'] + scalar_shift
                 
-            #     print(f"   -> Normalizing Footwall by shifting scalar field by: {scalar_shift.item():.4f}")
-                
+                print(f"   -> Normalizing Footwall by shifting scalar field by: {scalar_shift.item():.4f}")
                 
             # IMPORTANT: Stitch Outputs based on Fault Mask
             final_out = {}
@@ -316,83 +314,135 @@ class GempyFaultModel(Gempy):
 if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
-    extent = [-0.1, 1.1, 0.1, 0.9, 0.1, 0.90, 0, 5]
+    extent = [-0.5, 1.7,-0.5, 1.7, -0.5, 2.5, 0, 5]
     resolution = [100, 50, 50, 2]
 
-    model = GempyFaultModel("Block Model Test", extent, resolution)
+    model = GempyFaultModel("Inclined horizon, 2 Block Model Test", extent, resolution)
     
     # 1. FAULT Data
     fault_interface_data = {
     'fault': torch.tensor([
-        [500.0, 500.0, 500.0, 0.0],
-        [450.0, 500.0, 600.0, 0.0],
+       [400.0, 200.0, 900.0, 0.0],
+        [400.0, 500.0, 900.0, 0.0],
+        [400.0, 800.0, 900.0, 0.0],
+        
+        # Middle of the fault
         [500.0, 200.0, 500.0, 0.0],
-        [450.0, 200.0, 600.0, 0.0],
+        [500.0, 500.0, 500.0, 0.0],
         [500.0, 800.0, 500.0, 0.0],
-        [450.0, 800.0, 600.0, 0.0],
+        
+        # Bottom edge of the fault (Low Z, Right X)
+        [600.0, 200.0, 100.0, 0.0],
+        [600.0, 500.0, 100.0, 0.0],
+        [600.0, 800.0, 100.0, 0.0],
 
         ])/1000
     }
     
     fault_orientation_data = {
-        'Positions': torch.tensor([ [500.0, 500.0, 500.0, 0],
-                                   
-                                    [400.0, 500.0, 800.0, 0],
-                                   [700.0, 500.0, 200, 0],
+        'Positions': torch.tensor([ [500.0, 500.0, 500.0, 0.0],
+                            [500.0, 200.0, 500.0, 0.0],
+                            [500.0, 800.0, 500.0, 0.0],
 
+                            [400.0, 800.0, 900.0, 0.0],
+                            [600.0, 800.0, 100.0, 0.0],
 
-                        # For rotation in X-Y plane section
-                                    [400.0, 800.0, 800.0, 0],
-
-                                    [400.0, 200.0, 800.0, 0],
                                    
                                    ]) / 1000,
 
-        "Values": torch.tensor([[0.894, 0, 0.447, 0],
-                                
-                                [0.894, 0.000, 0.447, 0.1],
-                                [0.894, 0.000, 0.447, -0.1],
+        "Values": torch.tensor([[0.970, 0.000, 0.242, 0.0],
+                                [0.970, 0.000, 0.242, 0.0],
+                                 [0.970, 0.000, 0.242, 0.0],
 
-                        # For rotation in X-Y plane section
+                                 [0.970, 0.000, 0.242, -0000.1],
+                                 [0.970, 0.000, 0.242,  0000.1],
 
-                                [0.9, 0.0, 0, 0.1],
-
-                                [0.9, 0.0, 0, -0.1],
-                                
+                           
                                 ])
     }
     
-    fault_transformation_matrix = torch.diag(torch.tensor([1.0, 1.0, 1.0, 0.05]))
+    fault_transformation_matrix = torch.diag(torch.tensor([1.0, 1.0, 1.0, 0.00]))
 
     fault_input = {'sp_coord': fault_interface_data,
                     'op_coord': fault_orientation_data,
                     'transformation_matrix': fault_transformation_matrix}
 
     # 2. STRUCTURE Data
+    
     struct_interface_data =  {
         "rock1": torch.tensor([
-        [0.0, 200.0, 600.0, 0.0], [0.0, 500.0, 600.0, 0.0], [0.0, 800.0, 600.0, 0.0],
-        [200.0, 200.0, 600.0, 0.0], [200.0, 500.0, 600.0, 0.0], [200.0, 800.0, 600.0, 0.0],
-        [800.0, 200.0, 200.0, 0.0], [800.0, 500.0, 200.0, 0.0], [800.0, 800.0, 200.0, 0.0],
-        [1000.0, 200.0, 200.0, 0.0], [1000.0, 500.0, 200.0, 0.0], [1000.0, 800.0, 200.0, 0.0],
-    ]) / 1000,
+            # --- Left Block 
+            [100.0, 200.0, 110.0, 0.0], [100.0, 800.0, 110.0, 0.0], [300.0, 500.0, 270.0, 0.0],
+            [400.0, 200.0, 350.0, 0.0], [400.0, 800.0, 350.0, 0.0],
+            
+            # --- Right Block (X > 500) 
+            [600.0, 200.0, 260.0, 0.0], [600.0, 800.0, 260.0, 0.0], [800.0, 500.0, 420.0, 0.0],
+            [1000.0, 200.0, 580.0, 0.0], [1000.0, 800.0, 580.0, 0.0]
+        ]) / 1000,
 
-    "rock2": torch.tensor([
-        [0.0, 200.0, 800.0, 0.0], [0.0, 800.0, 800.0, 0.0], [200.0, 200.0, 800.0, 0.0],
-        [200.0, 800.0, 800.0, 0.0], [800.0, 200.0, 400.0, 0.0], [800.0, 800.0, 400.0, 0.0],
-        [1000.0, 200.0, 400.0, 0.0], [1000.0, 800.0, 400.0, 0.0],
-    ]) / 1000
+        "rock2": torch.tensor([
+            # --- Left Block (X < 450)
+            [100.0, 200.0, 310.0, 0.0], [100.0, 800.0, 310.0, 0.0], [300.0, 500.0, 470.0, 0.0],
+            [400.0, 200.0, 550.0, 0.0], [400.0, 800.0, 550.0, 0.0],
+            
+            # --- Right Block (X > 500) 
+            [600.0, 200.0, 460.0, 0.0], [600.0, 800.0, 460.0, 0.0], [800.0, 500.0, 620.0, 0.0],
+            [1000.0, 200.0, 780.0, 0.0], [1000.0, 800.0, 780.0, 0.0]
+        ]) / 1000
     }
     
     struct_orientation_data = {
        "Positions": torch.tensor([
-        [100.0, 500.0, 800.0, 0.0], [100.0, 500.0, 600.0, 0.0],
-        [900.0, 500.0, 400.0, 0.0], [900.0, 500.0, 200.0, 0.0],
-    ]) / 1000,
+        # Orientation for the Left Block 
+        [250.0, 500.0, 330.0, 0.0],
+
+        [150.0, 500.0, 330.0, 0.0],
+
+        [350.0, 500.0, 330.0, 0.0],
+
+        # For Gx
+        # [250.0, 500.0, 500.0, 0.0],
+
+
+        
+        # Orientation for the Right Block
+        [850.0, 500.0, 560.0, 0.0],
+
+        [750.0, 500.0, 560.0, 0.0],
+
+        [950.0, 500.0, 560.0, 0.0],
+
+        # For Gx
+        # [850.0, 500.0, 400.0, 0.0],
+
+
+        ]) / 1000,
+        
     "Values": torch.tensor([
-        [0.000, 0.000, 1.000, 0.1], [0.000, 0.000, 1.000, 0.1],
-        [0.000, 0.000, 1.000, -0.1], [0.000, 0.000, 1.000, -0.1],
-    ])
+        # Left Block
+        [-0.625, 0.000, 0.781, 0.0],  
+        
+        [-0.625, 0.000, 0.781, -0.9],  
+
+        [-0.625, 0.000, 0.781, -0.3],  
+
+        # For Gx
+
+        # [-0.1, 0.000, 0.0, 0.0],  
+
+
+        # Right Block
+        [-0.625, 0.000, 0.781, 0.0],  
+
+        [-0.625, 0.000, 0.781, -0.7],  
+
+        [-0.625, 0.000, 0.781, -0.2],  
+
+        # For Gx
+        # [-0.1, 0.000, 0.0, 0.0],  
+
+
+        ])
     }
 
     struct_transformation_matrix = torch.diag(torch.tensor([1.0, 1.0, 1.0, 0.05]))
@@ -413,16 +463,16 @@ if __name__ == "__main__":
 
     ##### FOR 2D matplotlib #####
     import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
+    for t in [0, 0.5, .75, 1.0, 1.25, 1.5,  1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
         model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
         time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     #############################################################################################

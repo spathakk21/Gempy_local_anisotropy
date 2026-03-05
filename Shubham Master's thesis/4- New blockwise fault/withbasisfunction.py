@@ -13,13 +13,13 @@ except ImportError:
     print("Warning: PyVista not installed. Please install.")
     PYVISTA_AVAILABLE = False
 
-import pyro
-import pyro.distributions as dist
+# import pyro
+# import pyro.distributions as dist
 
 
-# for CI testing
-smoke_test = ('CI' in os.environ)
-pyro.set_rng_seed(1)
+# # for CI testing
+# smoke_test = ('CI' in os.environ)
+# pyro.set_rng_seed(1)
 
 
 class grid:

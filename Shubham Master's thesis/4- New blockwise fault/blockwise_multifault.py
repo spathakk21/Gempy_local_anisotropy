@@ -4,7 +4,7 @@ import copy
 import matplotlib.pyplot as plt
 
 # Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
-from pyvista_new import Gempy
+from withbasisfunction import Gempy
 
 class GempyMultiFaultModel(Gempy):
     """
@@ -268,6 +268,34 @@ class GempyMultiFaultModel(Gempy):
 
             if not block_outputs:
                 raise ValueError("No valid structural blocks were computed!")
+
+
+            # ===================================================================
+            # NEW: N-BLOCK SCALAR FIELD NORMALIZATION
+            # ===================================================================
+            # # 1. Pick the first computed block as the "Master" baseline
+            # template_sig = list(block_outputs.keys())[0]
+            # master_ref_mean = torch.mean(block_outputs[template_sig]['scalar_ref_points'])
+
+            # print(f"\n--- Normalizing {len(block_outputs)} Blocks to Master {template_sig} ---")
+            
+            # # 2. Iterate through ALL blocks and shift them to match the Master
+            # for sig, out_dict in block_outputs.items():
+            #     if sig != template_sig: # Skip the master block itself
+            #         # Find this specific block's mathematical baseline
+            #         block_ref_mean = torch.mean(out_dict['scalar_ref_points'])
+                    
+            #         # Calculate the drift
+            #         scalar_shift = master_ref_mean - block_ref_mean
+                    
+            #         # Apply the shift to the block's grid and reference points
+            #         out_dict['Regular'] = out_dict['Regular'] + scalar_shift
+            #         out_dict['scalar_ref_points'] = out_dict['scalar_ref_points'] + scalar_shift
+                    
+            #         print(f"   -> Block {sig} shifted by: {scalar_shift.item():.4f}")
+            # # ===================================================================
+
+
 
             # Stitch blocks together based on Boolean Signatures for plotting
             # Initializing final output

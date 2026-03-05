@@ -3,6 +3,7 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 import pandas as pd
+import os
 
 # Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
 from withbasisfunction import Gempy
@@ -195,6 +196,33 @@ class GempyMultiFaultModel(Gempy):
 
             if not block_outputs:
                 raise ValueError("No valid structural blocks were computed!")
+
+
+            # # ===================================================================
+            # # NEW: N-BLOCK SCALAR FIELD NORMALIZATION
+            # # ===================================================================
+            # # 1. Pick the first computed block as the "Master" baseline
+            # template_sig = list(block_outputs.keys())[0]
+            # master_ref_mean = torch.mean(block_outputs[template_sig]['scalar_ref_points'])
+
+            # print(f"\n--- Normalizing {len(block_outputs)} Blocks to Master {template_sig} ---")
+            
+            # # 2. Iterate through ALL blocks and shift them to match the Master
+            # for sig, out_dict in block_outputs.items():
+            #     if sig != template_sig: # Skip the master block itself
+            #         # Find this specific block's mathematical baseline
+            #         block_ref_mean = torch.mean(out_dict['scalar_ref_points'])
+                    
+            #         # Calculate the drift
+            #         scalar_shift = master_ref_mean - block_ref_mean
+                    
+            #         # Apply the shift to the block's grid and reference points
+            #         out_dict['Regular'] = out_dict['Regular'] + scalar_shift
+            #         out_dict['scalar_ref_points'] = out_dict['scalar_ref_points'] + scalar_shift
+                    
+            #         print(f"   -> Block {sig} shifted by: {scalar_shift.item():.4f}")
+            # # ===================================================================
+
 
             # 3. Stitch blocks together based on Boolean Signatures
             final_out, final_res = {}, {}
@@ -431,8 +459,15 @@ if __name__ == "__main__":
     ## DYNAMIC ISOTROPIC SCALING 
     
     print("Loading raw data and calculating custom scale...")
-    df_sp = pd.read_csv("filtered_surface_points.csv")
-    df_op = pd.read_csv("filtered_orientations.csv")
+
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+    df_sp = pd.read_csv(os.path.join(BASE_DIR, "filtered_surface_points.csv"))
+    df_op = pd.read_csv(os.path.join(BASE_DIR, "filtered_orientations.csv"))
+
+
+    # df_sp = pd.read_csv("filtered_surface_points.csv")
+    # df_op = pd.read_csv("filtered_orientations.csv")
     
     # Find the absolute real-world boundaries of the data
     min_x, max_x = df_sp['X'].min(), df_sp['X'].max()
@@ -461,13 +496,15 @@ if __name__ == "__main__":
     # Dynamically set the Model Extent with a 5% buffer so data doesn't touch the walls
     buffer = 0.05
     extent = [
-        0.0 - buffer, ((max_x - min_x) / max_dist) + buffer,
+        0.0 - buffer,
+          ((max_x - min_x) / max_dist) + buffer,
         # 0.0 - buffer, ((max_y - min_y) / max_dist) + buffer,
 
         0.0 - buffer, ((max_y - min_y) / max_dist),
 
         # 0.0 - buffer, ((max_z - min_z) / max_dist) + buffer,
-        0.0 - buffer, ((max_z - min_z) / max_dist)*1.5,
+        0.0 - buffer,
+          ((max_z - min_z) / max_dist)*1.5 +0.15,
 
         0.0, 5.0 
     ]
@@ -523,12 +560,12 @@ if __name__ == "__main__":
     fx_positions1 = fault4orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions1 > 0.) & (fx_positions1 <0.2)
 
-    fault4orientation_data['Values'][hanging_wall_mask1, 3] = -0.03
+    fault4orientation_data['Values'][hanging_wall_mask1, 3] = -0.01
 
     fx_positions2 = fault4orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions2 > 0.2) & (fx_positions2 <0.4)
 
-    fault4orientation_data['Values'][hanging_wall_mask1, 3] = 0.03
+    fault4orientation_data['Values'][hanging_wall_mask1, 3] = 0.01
 
     ###############
 
@@ -544,12 +581,12 @@ if __name__ == "__main__":
     fx_positions3 = fault3orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions3 > 0.5) & (fx_positions3 <0.7)
 
-    fault3orientation_data['Values'][hanging_wall_mask1, 3] = -0.03
+    fault3orientation_data['Values'][hanging_wall_mask1, 3] = -0.01
 
     fx_positions4 = fault3orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions4 > 0.7) & (fx_positions4 <1.0)
 
-    fault3orientation_data['Values'][hanging_wall_mask1, 3] = 0.03
+    fault3orientation_data['Values'][hanging_wall_mask1, 3] = 0.01
 
     ###############
 
@@ -560,41 +597,46 @@ if __name__ == "__main__":
     struct_interface_data = {fmt: get_4d_sp(df_sp, fmt) for fmt in struct_formations if len(get_4d_sp(df_sp, fmt)) > 0}
     struct_orientation_data = get_4d_op(df_op, struct_formations)
     
-       #####################################################
-# ########BLOCK - 1
-#     x_positions1 = struct_orientation_data['Positions'][:, 0]
-#     hanging_wall_mask1 = (x_positions1 > -0.1) & (x_positions1 <0.2)
+       ####################################################
+########BLOCK - 1
+    x_positions1 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions1 > -0.1) & (x_positions1 <0.2)
 
-#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.02
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.2
+
+    x_positions2 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions2 > -0.0) & (x_positions2 <0.2)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.1
+
+#####################################################
+
+#####BLOCK - 2
+    
+    x_positions3 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions3 > 0.2) & (x_positions3 <0.4)
+
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.15
+
+
+    x_positions4 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask2 = (x_positions4 > 0.4) & (x_positions4 <0.6)
+
+    struct_orientation_data['Values'][hanging_wall_mask2, 3] = -0.05
 
 # #####################################################
+# ## BLOCK - 3
 
-# #####BLOCK - 2
-    
-#     x_positions3 = struct_orientation_data['Positions'][:, 0]
-#     hanging_wall_mask1 = (x_positions3 > 0.2) & (x_positions3 <0.8)
+    x_positions5 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions5 > 0.6) & (x_positions5 <0.9)
 
-#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.05
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.10
 
+    x_positions6 = struct_orientation_data['Positions'][:, 0]
+    hanging_wall_mask1 = (x_positions5 > 0.9) & (x_positions5 <1.0)
 
-#     # x_positions4 = struct_orientation_data['Positions'][:, 0]
-#     # hanging_wall_mask2 = (x_positions4 > 0.5) & (x_positions4 <0.7)
-
-#     # struct_orientation_data['Values'][hanging_wall_mask2, 3] = 0.
-
-# # #####################################################
-# ### BLOCK - 3
-
-#     x_positions5 = struct_orientation_data['Positions'][:, 0]
-#     hanging_wall_mask1 = (x_positions5 > 0.8) & (x_positions5 <1.1)
-
-#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.001
-
-#     x_positions6 = struct_orientation_data['Positions'][:, 0]
-#     hanging_wall_mask1 = (x_positions6 > 1.1)
-
-#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = 0.001
-#####################################################
+    struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.05
+###################################################
     
     struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05]))
 
@@ -613,17 +655,17 @@ if __name__ == "__main__":
     #########################################################################
 
     #### FOR 2D matplotlib #####
-    # import time
-    # for t in [0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
-    #     model.plot_data_section(section={2:0.2, 4:t}, plot_scalar_field = True, plot_input_data=False)
-    #     time.sleep(1)
+    import time
+    for t in [0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3,3.5, 4,4.5]:
+        model.plot_data_section(section={2:0.2, 4:t}, plot_scalar_field = True, plot_input_data=False)
+        time.sleep(1)
 
 
-    #### FOR 3D matplotlib #####
-    # import time
-    # for t in [0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=False)
-    #     time.sleep(1)
+    ### FOR 3D matplotlib #####
+    import time
+    for t in [0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=False)
+        time.sleep(1)
 
 
     #############################################################################################
