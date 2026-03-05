@@ -2,8 +2,6 @@ import os
 from functools import partial
 import torch
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 # import pyvista as pv
 
@@ -322,7 +320,7 @@ class Gempy(grid):
     ##############################################################################
     ########### SETTING BASIS FUNCTION FOR ADDING TREND TO THE MEAN ###############
     ##############################################################################
-    def set_evaluate_basis(self, x, active_dims=[0, 1, 2]):
+    def set_evaluate_basis(self, x, active_dims=[0, 1, 2, 3]):
         """
         Calculates the F matrix -- which represents polynomial trend of mean at data points
         Args:
@@ -394,13 +392,9 @@ class Gempy(grid):
             grads_list.append(grad)
 
         # Stack Results
-        if vals_list:
-            F_vals = torch.stack(vals_list, dim=0)  # Shape: (N_terms, N)
-            F_grads = torch.stack(grads_list, dim=0) # Shape: (N_terms, N, dim)
-        else:
-            # Fallback for empty active_dims
-            F_vals = torch.zeros(0, N, dtype=self.dtype)
-            F_grads = torch.zeros(0, N, dim, dtype=self.dtype)
+        
+        F_vals = torch.stack(vals_list, dim=0)  # Shape: (N_terms, N)
+        F_grads = torch.stack(grads_list, dim=0) # Shape: (N_terms, N, dim)
 
         return F_vals, F_grads
 
@@ -482,7 +476,7 @@ class Gempy(grid):
 
         # Set on which variables I want basis to be applied
         # [0,1,2] means [x,y,z]
-        active_dimensions = [0,1,2,3] 
+        active_dimensions = [0,1,2] 
 
         # Calculating Basis at Gradient Points
         _, dF_grad = self.set_evaluate_basis(self.Position_G, active_dims=active_dimensions) 
@@ -499,7 +493,8 @@ class Gempy(grid):
         
         k_dim = self.Position_G.shape[1] # Total number of component available for the gradient
         # print(k_dim)
-        
+      
+
         # Initialize matrix for storing F_grad
         F_gradients = torch.zeros(L, n_grad_pts * k_dim)
         
@@ -509,14 +504,14 @@ class Gempy(grid):
             end_col = (u + 1) * n_grad_pts
             F_gradients[:, start_col:end_col] = dF_grad[:, :, u]
 
-        # Calcumating Basis function value at Interface Points
+    
+        ########### Calculating Basis function value at Interface Points ######################
+
+        # Using (reference - rest) for all the layers
         F_vals_rest, _ = self.set_evaluate_basis(self.rest_layer_points,active_dims=active_dimensions)
         F_vals_ref, _ = self.set_evaluate_basis(self.ref_layer_points, active_dims=active_dimensions)
         F_interface = -F_vals_rest + F_vals_ref 
-        
-        # print(f"The gradient comp of F matrix is:{F_gradients}")
 
-        # print(f"The interface comp of F matrix is:{F_interface}")
         
         # Finalizing F_matrix
         F_matrix = torch.cat([F_gradients, F_interface], dim=1)
@@ -524,11 +519,19 @@ class Gempy(grid):
         
         # print(f"The F matrix is:{F_matrix}")
 
+        # print(f"The shape of F matrix is:{F_matrix.shape}")
+
+        
         # Augment K for solving
         ###### [C  F']
         ###### [F  0 ]
 
         zeros_corner = torch.zeros(L, L)
+
+        # Add a tiny number to the diagonal (kind of nugget effect)
+        zeros_corner = zeros_corner + 1e-6 * torch.eye(L)
+        
+
         top = torch.cat([K, F_matrix.T], dim=1)
         bottom = torch.cat([F_matrix, zeros_corner], dim=1)
         K_aug = torch.cat([top, bottom], dim=0)
@@ -553,6 +556,8 @@ class Gempy(grid):
     
     def Solution_grid(self, grid_coord, section_plot= False, recompute_weights=True):
         
+        # print("Original function")
+
         # INPUT --> grid_coord: grid points to evaluate
 
         # Optimization: Only solve the linear system if requested or if weights don't exist
@@ -609,7 +614,6 @@ class Gempy(grid):
         sed_rest_SimPoint = self.squared_euclidean_distance(self.rest_layer_points,grid_data_plus_ref)
         sed_ref_SimPoint = self.squared_euclidean_distance(self.ref_layer_points,grid_data_plus_ref)
 
-
         # Contribution from interface data points
 
         # sigma_0_interf =  self.w[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
@@ -617,6 +621,10 @@ class Gempy(grid):
         
         sigma_0_interf =  w_dual[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
         sigma_0_interf = torch.sum(sigma_0_interf,axis = 0)
+
+        # print(f"self.covariance_function(sed_rest_SimPoint):{self.covariance_function(sed_rest_SimPoint)}")
+        # print(f"self.covariance_function(sed_ref_SimPoint): {self.covariance_function(sed_ref_SimPoint)}")
+        
         
         # print(self.Position_G.shape[0]*self.Position_G.shape[1])
         ################################################################
@@ -633,7 +641,12 @@ class Gempy(grid):
 
         # Final estimation of Z*
         ### Z* = Covraince parts (grad + interface) + Basis function part
-        interpolate_result = sigma_0_grad + sigma_0_interf + basis_value
+        interpolate_result = sigma_0_grad + sigma_0_interf  + basis_value
+
+        # print(f"sigma_0_grad: {sigma_0_grad}")
+        # print(f"sigma_0_interf: {sigma_0_interf}")
+        # print(f"basis_value: {basis_value}")
+        # print(f"interpolate_result: {interpolate_result}")
 
         ################################################################
 
@@ -742,7 +755,12 @@ class Gempy(grid):
             X = self.mesh[0].numpy()
             Y = self.mesh[1].numpy()
             Z = sclar_field.reshape(X.shape).numpy()
-            plt.contour(X, Y, Z)
+            #     plt.contour(X, Y, Z)
+        
+        #### ---
+            contours = plt.contour(X, Y, Z)
+            plt.clabel(contours, inline=True, fontsize=10, colors='black')
+        #### ---
         
         # Create a legend
         
@@ -754,7 +772,19 @@ class Gempy(grid):
         for keys, _ in self.sp_coord.items():
             label_map[i+1] = keys
             i = i+1 
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
+
+
         plt.legend(handles=legend_handles, title='Layers')
         plt.xlabel(axis_label[accepted_index[0]] + " Coordinates")
         plt.ylabel(axis_label[accepted_index[1]] + " Coordinates")
@@ -764,7 +794,7 @@ class Gempy(grid):
         ##### Plot surface points and gradients
         ########################################################################################
         if plot_input_data:
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 plt.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], colour[i])
@@ -809,7 +839,17 @@ class Gempy(grid):
             label_map[i+1] = keys
             i = i+1 
         
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
         plt.legend(handles=legend_handles, title='Layers',loc="upper left")
         
         ################################################################################
@@ -839,7 +879,7 @@ class Gempy(grid):
         ########################################################################################
         if plot_input_data:
             
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 ax.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], values[:,accepted_index[2]], colour[i])
@@ -1016,7 +1056,7 @@ class Gempy(grid):
 
         if only_surface_mode is False:
 
-            plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
+            plotter.add_mesh(mesh, scalars="Lithology", cmap="seismic", 
                          point_size=5, render_points_as_spheres=True, opacity=0.5,
                          show_scalar_bar=False,label="Geological Grid")
 
@@ -1029,7 +1069,7 @@ class Gempy(grid):
             label_map[i+1] = key
             i += 1
             
-        cmap = plt.get_cmap("viridis")
+        cmap = plt.get_cmap("seismic")
         
         # Number of rock types = Basement + defined layers
         max_possible_val = 1 + len(self.sp_coord)
@@ -1120,7 +1160,7 @@ class Gempy(grid):
                 arrows = pv.PolyData(pos_g)
                 arrows["vectors"] = vec_g
                 # "Glyph" filters scale geometry (arrows) at every point
-                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.4)
+                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.1)
                 
                 plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
 

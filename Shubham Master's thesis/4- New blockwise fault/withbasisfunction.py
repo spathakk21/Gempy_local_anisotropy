@@ -528,12 +528,9 @@ class Gempy(grid):
 
         zeros_corner = torch.zeros(L, L)
 
-        # Add a tiny 'Drift Penalty' (Ridge Regularization)
-        # This tells the solver: "If you don't have enough points to figure out 
-        # a polynomial coefficient, just set it to 0 instead of crashing."
-        # drift_penalty = 1e1
-        # zeros_corner = torch.zeros(L, L) - (torch.eye(L) * drift_penalty)
-
+        # Add a tiny number to the diagonal (kind of nugget effect)
+        zeros_corner = zeros_corner + 1e-6 * torch.eye(L)
+        
 
         top = torch.cat([K, F_matrix.T], dim=1)
         bottom = torch.cat([F_matrix, zeros_corner], dim=1)
@@ -1059,7 +1056,7 @@ class Gempy(grid):
 
         if only_surface_mode is False:
 
-            plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
+            plotter.add_mesh(mesh, scalars="Lithology", cmap="seismic", 
                          point_size=5, render_points_as_spheres=True, opacity=0.5,
                          show_scalar_bar=False,label="Geological Grid")
 
@@ -1072,7 +1069,7 @@ class Gempy(grid):
             label_map[i+1] = key
             i += 1
             
-        cmap = plt.get_cmap("viridis")
+        cmap = plt.get_cmap("seismic")
         
         # Number of rock types = Basement + defined layers
         max_possible_val = 1 + len(self.sp_coord)
@@ -1243,18 +1240,8 @@ def main():
 
     interface_data = {
     'rock1': torch.tensor([
-         [500.0, 500.0, 500.0, 0.0],
-         [400.0, 600.0, 500.0, 0.0],
-
-        #  [100.0, 200.0, 500.0, 0.0],
-        #  [200.0, 300.0, 500.0, 0.0],
-        #  [300.0, 400.0, 500.0, 0.0],
-        #  [600.0, 700.0, 500.0, 0.0],
-        #  [700.0, 800.0, 500.0, 0.0],
-        #  [800.0, 800.0, 500.0, 0.0],
-
-
-
+        [500.0, 500.0, 500.0, 0.0],
+        [600.0, 600.0, 500.0, 0.0]
         
         ])/1000
     
@@ -1262,13 +1249,14 @@ def main():
 
     orientation_data = {
     'Positions': torch.tensor([
-       [400.0, 500.0, 500.0, 0]  
+       [500.0, 500.0, 500.0, 0]  
     ]) / 1000,
 
         "Values": torch.tensor([
-        [0.0, 0.000, 1.0, 0.0]
+        [0.0, 0.000, 1, 0.0]
     ])
 }
+
     
 
 #     # GULFAKS DATASET
@@ -1872,7 +1860,7 @@ def main():
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
-    print("\nStarting Interactive Visualization...")
+    # print("\nStarting Interactive Visualization...")
     # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
     

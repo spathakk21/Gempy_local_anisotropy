@@ -2,8 +2,6 @@ import os
 from functools import partial
 import torch
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 # import pyvista as pv
 
@@ -507,7 +505,6 @@ class Gempy(grid):
             F_gradients[:, start_col:end_col] = dF_grad[:, :, u]
 
     
-
         ########### Calculating Basis function value at Interface Points ######################
 
         # Using (reference - rest) for all the layers
@@ -530,6 +527,11 @@ class Gempy(grid):
         ###### [F  0 ]
 
         zeros_corner = torch.zeros(L, L)
+
+        # Add a tiny number to the diagonal (kind of nugget effect)
+        zeros_corner = zeros_corner + 1e-6 * torch.eye(L)
+        
+
         top = torch.cat([K, F_matrix.T], dim=1)
         bottom = torch.cat([F_matrix, zeros_corner], dim=1)
         K_aug = torch.cat([top, bottom], dim=0)
@@ -554,6 +556,8 @@ class Gempy(grid):
     
     def Solution_grid(self, grid_coord, section_plot= False, recompute_weights=True):
         
+        # print("Original function")
+
         # INPUT --> grid_coord: grid points to evaluate
 
         # Optimization: Only solve the linear system if requested or if weights don't exist
@@ -751,7 +755,12 @@ class Gempy(grid):
             X = self.mesh[0].numpy()
             Y = self.mesh[1].numpy()
             Z = sclar_field.reshape(X.shape).numpy()
-            plt.contour(X, Y, Z)
+            #     plt.contour(X, Y, Z)
+        
+        #### ---
+            contours = plt.contour(X, Y, Z)
+            plt.clabel(contours, inline=True, fontsize=10, colors='black')
+        #### ---
         
         # Create a legend
         
@@ -763,7 +772,19 @@ class Gempy(grid):
         for keys, _ in self.sp_coord.items():
             label_map[i+1] = keys
             i = i+1 
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
+
+
         plt.legend(handles=legend_handles, title='Layers')
         plt.xlabel(axis_label[accepted_index[0]] + " Coordinates")
         plt.ylabel(axis_label[accepted_index[1]] + " Coordinates")
@@ -773,7 +794,7 @@ class Gempy(grid):
         ##### Plot surface points and gradients
         ########################################################################################
         if plot_input_data:
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 plt.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], colour[i])
@@ -818,7 +839,17 @@ class Gempy(grid):
             label_map[i+1] = keys
             i = i+1 
         
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
         plt.legend(handles=legend_handles, title='Layers',loc="upper left")
         
         ################################################################################
@@ -848,7 +879,7 @@ class Gempy(grid):
         ########################################################################################
         if plot_input_data:
             
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 ax.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], values[:,accepted_index[2]], colour[i])
@@ -1025,7 +1056,7 @@ class Gempy(grid):
 
         if only_surface_mode is False:
 
-            plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
+            plotter.add_mesh(mesh, scalars="Lithology", cmap="seismic", 
                          point_size=5, render_points_as_spheres=True, opacity=0.5,
                          show_scalar_bar=False,label="Geological Grid")
 
@@ -1038,7 +1069,7 @@ class Gempy(grid):
             label_map[i+1] = key
             i += 1
             
-        cmap = plt.get_cmap("viridis")
+        cmap = plt.get_cmap("seismic")
         
         # Number of rock types = Basement + defined layers
         max_possible_val = 1 + len(self.sp_coord)
@@ -1129,7 +1160,7 @@ class Gempy(grid):
                 arrows = pv.PolyData(pos_g)
                 arrows["vectors"] = vec_g
                 # "Glyph" filters scale geometry (arrows) at every point
-                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.4)
+                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.1)
                 
                 plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
 
