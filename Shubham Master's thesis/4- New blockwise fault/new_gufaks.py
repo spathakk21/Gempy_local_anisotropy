@@ -320,6 +320,109 @@ class GempyMultiFaultModel(Gempy):
         plotter.show_grid()
         plotter.show()
 
+    def plot_3d_with_faults(self, t_min=-0.5, t_max=4.5, t_initial=0.0):
+        """
+        Visualizes the stitched block model along with the extracted 3D fault planes
+        with an interactive time slider.
+        """
+        try:
+            import pyvista as pv
+        except ImportError:
+            print("PyVista is required for 3D plotting.")
+            return
+
+        plotter = pv.Plotter(window_size=[1024, 768])
+        plotter.set_scale(zscale=2.0) 
+        
+        nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
+        fault_colors = ["#ff4500", "#a9a9a9", "#2f4f4f"] # Orange-Red, Grey, Dark Grey
+
+        # =========================================================
+        # 1. THE CALLBACK FUNCTION (Runs every time slider moves)
+        # =========================================================
+        def update_time(value):
+            t_index = value
+            current_section = {4: t_index} 
+            full_grid_hyp, final_grid = self.get_section_grid(current_section)
+            points = final_grid.numpy()
+
+            # --- EXTRACT AND PLOT FAULT PLANES ---
+            combined_backup = self.save_internal_state()
+            try:
+                for i, f_name in enumerate(self.fault_names):
+                    self.load_internal_state(self.fault_states[f_name])
+                    out, _ = super(GempyMultiFaultModel, self).Solution_grid(full_grid_hyp, section_plot=True, recompute_weights=False)
+                    f_scalar = out["Regular"].numpy()
+                    f_thresh = self.fault_thresholds[f_name].item()
+                    
+                    f_grid = pv.StructuredGrid()
+                    f_grid.points = points
+                    f_grid.dimensions = [nx, ny, nz]
+                    f_grid["Scalar"] = f_scalar
+                    
+                    try:
+                        # Contour the fault
+                        f_surf = f_grid.contour(isosurfaces=[f_thresh])
+                        c = fault_colors[i % len(fault_colors)]
+                        # The 'name' argument is crucial: it replaces the old mesh instead of drawing over it
+                        plotter.add_mesh(f_surf, color=c, opacity=0.6, name=f"fault_mesh_{f_name}", label=f"Fault: {f_name}" if value==t_initial else None)
+                    except ValueError:
+                        # If the fault completely disappears at this time step, contour() throws an error.
+                        # We catch it and remove the mesh from the scene.
+                        plotter.remove_actor(f"fault_mesh_{f_name}")
+
+            finally:
+                self.load_internal_state(combined_backup)
+
+            # --- EXTRACT AND PLOT STRUCTURAL INTERFACES ---
+            _, results = self.Solution_grid(grid_coord=full_grid_hyp, section_plot=True, recompute_weights=False)
+            values = torch.round(results['Regular']).numpy()
+            
+            vol_grid = pv.StructuredGrid()
+            vol_grid.points = points
+            vol_grid.dimensions = [nx, ny, nz]
+            vol_grid["Lithology"] = values
+            
+            max_layer_val = values.max()
+            if max_layer_val >= 2:
+                contour_levels = [i + 0.5 for i in range(1, int(max_layer_val) + 1)]
+                try:
+                    interfaces = vol_grid.contour(isosurfaces=contour_levels)
+                    plotter.add_mesh(interfaces, cmap="viridis", opacity=0.9, name="rock_interfaces_mesh", label="Rock Interfaces" if value==t_initial else None)
+                except ValueError:
+                    plotter.remove_actor("rock_interfaces_mesh")
+
+        # =========================================================
+        # 2. PLOT STATIC INPUT POINTS
+        # =========================================================
+        # We plot these outside the callback because they do not change shape when the slider moves
+        for key, coords in self.sp_coord.items():
+            valid_coords = coords[:,[0,1,2]].numpy() if coords.shape[1] > 3 else coords.numpy()
+            is_fault = key in self.fault_names
+            color = "black" if is_fault else "blue"
+            plotter.add_points(valid_coords, color=color, point_size=12, render_points_as_spheres=True, name=f"points_{key}")
+
+        # =========================================================
+        # 3. INITIALIZE PLOT & ADD SLIDER
+        # =========================================================
+        # Run once to draw the initial state
+        update_time(t_initial)
+        
+        # Add the interactive slider
+        plotter.add_slider_widget(
+            callback=update_time, 
+            rng=[t_min, t_max], 
+            value=t_initial, 
+            title="Evolution Time (t)", 
+            pointa=(0.025, 0.1), # Position bottom left
+            pointb=(0.31, 0.1),
+            style='modern'
+        )
+
+        plotter.add_axes()
+        plotter.add_legend()
+        plotter.show_grid()
+        plotter.show()
 
 # --- EXECUTION BLOCK ---
 if __name__ == "__main__":
@@ -457,41 +560,41 @@ if __name__ == "__main__":
     struct_interface_data = {fmt: get_4d_sp(df_sp, fmt) for fmt in struct_formations if len(get_4d_sp(df_sp, fmt)) > 0}
     struct_orientation_data = get_4d_op(df_op, struct_formations)
     
-       # #####################################################
-# BLOCK - 1
-    # x_positions1 = struct_orientation_data['Positions'][:, 0]
-    # hanging_wall_mask1 = (x_positions1 > -0.1) & (x_positions1 <0.2)
+       #####################################################
+# ########BLOCK - 1
+#     x_positions1 = struct_orientation_data['Positions'][:, 0]
+#     hanging_wall_mask1 = (x_positions1 > -0.1) & (x_positions1 <0.2)
 
-    # struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.02
+#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.02
 
 # #####################################################
 
-# BLOCK - 2
+# #####BLOCK - 2
     
-    # x_positions3 = struct_orientation_data['Positions'][:, 0]
-    # hanging_wall_mask1 = (x_positions3 > 0.2) & (x_positions3 <0.7)
+#     x_positions3 = struct_orientation_data['Positions'][:, 0]
+#     hanging_wall_mask1 = (x_positions3 > 0.2) & (x_positions3 <0.8)
 
-    # struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.05
+#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.05
 
 
-    # x_positions4 = struct_orientation_data['Positions'][:, 0]
-    # hanging_wall_mask2 = (x_positions4 > 0.5) & (x_positions4 <0.7)
+#     # x_positions4 = struct_orientation_data['Positions'][:, 0]
+#     # hanging_wall_mask2 = (x_positions4 > 0.5) & (x_positions4 <0.7)
 
-    # struct_orientation_data['Values'][hanging_wall_mask2, 3] = 0.
+#     # struct_orientation_data['Values'][hanging_wall_mask2, 3] = 0.
 
 # # #####################################################
-# BLOCK - 3
+# ### BLOCK - 3
 
-    # x_positions5 = struct_orientation_data['Positions'][:, 0]
-    # hanging_wall_mask1 = (x_positions5 > 0.8) & (x_positions5 <0.9)
+#     x_positions5 = struct_orientation_data['Positions'][:, 0]
+#     hanging_wall_mask1 = (x_positions5 > 0.8) & (x_positions5 <1.1)
 
-    # struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.1
+#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = -0.001
 
-    # x_positions6 = struct_orientation_data['Positions'][:, 0]
-    # hanging_wall_mask1 = (x_positions6 > 0.9) & (x_positions6 <1.1)
+#     x_positions6 = struct_orientation_data['Positions'][:, 0]
+#     hanging_wall_mask1 = (x_positions6 > 1.1)
 
-    # struct_orientation_data['Values'][hanging_wall_mask1, 3] = 0.01
-# #####################################################
+#     struct_orientation_data['Values'][hanging_wall_mask1, 3] = 0.001
+#####################################################
     
     struct_transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05]))
 
@@ -510,10 +613,10 @@ if __name__ == "__main__":
     #########################################################################
 
     #### FOR 2D matplotlib #####
-    import time
-    for t in [0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
-        model.plot_data_section(section={2:0.2, 4:t}, plot_scalar_field = True, plot_input_data=False)
-        time.sleep(1)
+    # import time
+    # for t in [0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3]:
+    #     model.plot_data_section(section={2:0.2, 4:t}, plot_scalar_field = True, plot_input_data=False)
+    #     time.sleep(1)
 
 
     #### FOR 3D matplotlib #####
@@ -540,3 +643,5 @@ if __name__ == "__main__":
 
     # Use your new Multi-Fault 3D Plotter!
     # model.plot_3d_with_faults(t_index=0.0)
+
+    # model.plot_3d_with_faults(t_min=-0.5, t_max=4.5, t_initial=0.0)
