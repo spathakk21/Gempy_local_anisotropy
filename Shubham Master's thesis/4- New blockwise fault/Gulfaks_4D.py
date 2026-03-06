@@ -195,6 +195,34 @@ class GempyMultiFaultModel(Gempy):
             if not block_outputs:
                 raise ValueError("No valid structural blocks were computed!")
 
+
+            ##########
+            ############### SCALAR FIELD NORMALIZATION
+            
+            # Pick the first computed block as the "reference/master" block
+            template_sig = list(block_outputs.keys())[0]
+            master_ref_mean = torch.mean(block_outputs[template_sig]['scalar_ref_points'])
+
+            # print(f"\n--- Normalizing {len(block_outputs)} Blocks to Master/reference {template_sig} ---")
+            
+            # Iterate through ALL blocks and shift them to match the Master
+            for sig, out_dict in block_outputs.items():
+                if sig != template_sig: # Skip the master block itself
+                    # Find this specific block's average scaa=lar field value
+                    block_ref_mean = torch.mean(out_dict['scalar_ref_points'])
+                    
+                    # Calculate the difference in the values
+                    scalar_shift = master_ref_mean - block_ref_mean
+                    
+                    # Apply the shift to the block's grid and reference points
+                    out_dict['Regular'] = out_dict['Regular'] + scalar_shift
+                    out_dict['scalar_ref_points'] = out_dict['scalar_ref_points'] + scalar_shift
+                    
+                    # print(f"   -> Block {sig} shifted by: {scalar_shift.item()")
+
+            ###########
+
+
             # 3. Stitch blocks together based on Boolean Signatures
             final_out, final_res = {}, {}
             template_sig = list(block_outputs.keys())[0]
@@ -1085,17 +1113,17 @@ if __name__ == "__main__":
     #########################################################################
 
     #### FOR 2D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0]:
-    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0]:
+        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=False)
+        time.sleep(1)
 
 
     #### FOR 3D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=False)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=False)
+    #     time.sleep(1)
 
 
     #############################################################################################

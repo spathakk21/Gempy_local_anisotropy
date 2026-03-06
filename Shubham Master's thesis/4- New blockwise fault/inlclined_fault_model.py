@@ -253,22 +253,22 @@ class GempyFaultModel(Gempy):
                 # Calculating scalar field on whole grid using foot wall model weights
                 struct_out_fw, struct_res_fw = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
 
-            # ===================================================================
-            # NEW: SCALAR FIELD NORMALIZATION (Aligning the two blocks)
-            # ===================================================================
+            ###########
+            #### SCALAR FIELD NORMALIZATION (Aligning the two blocks)
+        
             if struct_out_hw is not None and struct_out_fw is not None:
-                # 1. Find the average scalar value of the geological interfaces in both blocks
+                # Calculating average scalar value of the geological interfaces in both blocks
                 hw_ref_mean = torch.mean(struct_out_hw['scalar_ref_points'])
                 fw_ref_mean = torch.mean(struct_out_fw['scalar_ref_points'])
                 
-                # 2. Calculate the difference (the mathematical drift between the two solvers)
+                # Calculate the difference between their averages
                 scalar_shift = hw_ref_mean - fw_ref_mean
                 
-                # 3. Apply this shift to the entire Footwall scalar field and its reference points
+                # Apply this shift to the entire Footwall scalar field and its reference points
                 struct_out_fw['Regular'] = struct_out_fw['Regular'] + scalar_shift
                 struct_out_fw['scalar_ref_points'] = struct_out_fw['scalar_ref_points'] + scalar_shift
                 
-                print(f"   -> Normalizing Footwall by shifting scalar field by: {scalar_shift.item():.4f}")
+                # print(f"Normalizing Footwall by shifting scalar field by: {scalar_shift.item()}")
                 
             # IMPORTANT: Stitch Outputs based on Fault Mask
             final_out = {}

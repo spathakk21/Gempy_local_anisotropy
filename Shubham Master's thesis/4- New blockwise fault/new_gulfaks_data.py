@@ -198,31 +198,31 @@ class GempyMultiFaultModel(Gempy):
                 raise ValueError("No valid structural blocks were computed!")
 
 
-            # # ===================================================================
-            # # NEW: N-BLOCK SCALAR FIELD NORMALIZATION
-            # # ===================================================================
-            # # 1. Pick the first computed block as the "Master" baseline
-            # template_sig = list(block_outputs.keys())[0]
-            # master_ref_mean = torch.mean(block_outputs[template_sig]['scalar_ref_points'])
-
-            # print(f"\n--- Normalizing {len(block_outputs)} Blocks to Master {template_sig} ---")
+            ##########
+            ############### SCALAR FIELD NORMALIZATION
             
-            # # 2. Iterate through ALL blocks and shift them to match the Master
-            # for sig, out_dict in block_outputs.items():
-            #     if sig != template_sig: # Skip the master block itself
-            #         # Find this specific block's mathematical baseline
-            #         block_ref_mean = torch.mean(out_dict['scalar_ref_points'])
-                    
-            #         # Calculate the drift
-            #         scalar_shift = master_ref_mean - block_ref_mean
-                    
-            #         # Apply the shift to the block's grid and reference points
-            #         out_dict['Regular'] = out_dict['Regular'] + scalar_shift
-            #         out_dict['scalar_ref_points'] = out_dict['scalar_ref_points'] + scalar_shift
-                    
-            #         print(f"   -> Block {sig} shifted by: {scalar_shift.item():.4f}")
-            # # ===================================================================
+            # Pick the first computed block as the "reference/master" block
+            template_sig = list(block_outputs.keys())[0]
+            master_ref_mean = torch.mean(block_outputs[template_sig]['scalar_ref_points'])
 
+            # print(f"\n--- Normalizing {len(block_outputs)} Blocks to Master/reference {template_sig} ---")
+            
+            # Iterate through ALL blocks and shift them to match the Master
+            for sig, out_dict in block_outputs.items():
+                if sig != template_sig: # Skip the master block itself
+                    # Find this specific block's average scaa=lar field value
+                    block_ref_mean = torch.mean(out_dict['scalar_ref_points'])
+                    
+                    # Calculate the difference in the values
+                    scalar_shift = master_ref_mean - block_ref_mean
+                    
+                    # Apply the shift to the block's grid and reference points
+                    out_dict['Regular'] = out_dict['Regular'] + scalar_shift
+                    out_dict['scalar_ref_points'] = out_dict['scalar_ref_points'] + scalar_shift
+                    
+                    # print(f"   -> Block {sig} shifted by: {scalar_shift.item()")
+
+            ###########
 
             # 3. Stitch blocks together based on Boolean Signatures
             final_out, final_res = {}, {}
@@ -680,10 +680,9 @@ if __name__ == "__main__":
     # 
 
     # --- PLOTTING ---
-    # model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
+    model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
 
 
-    # Use your new Multi-Fault 3D Plotter!
-    # model.plot_3d_with_faults(t_index=0.0)
+    # New Multi-Fault 3D Plot - uncomment below
 
     # model.plot_3d_with_faults(t_min=-0.5, t_max=4.5, t_initial=0.0)

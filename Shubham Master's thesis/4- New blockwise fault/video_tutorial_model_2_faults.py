@@ -4,7 +4,7 @@ import copy
 import matplotlib.pyplot as plt
 
 # Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
-from pyvista_new import Gempy
+from withbasisfunction import Gempy
 
 class GempyMultiFaultModel(Gempy):
     """
@@ -221,6 +221,34 @@ class GempyMultiFaultModel(Gempy):
             if not block_outputs:
                 raise ValueError("No valid structural blocks were computed!")
 
+
+            ##########
+            ############### SCALAR FIELD NORMALIZATION
+            
+            # Pick the first computed block as the "reference/master" block
+            template_sig = list(block_outputs.keys())[0]
+            master_ref_mean = torch.mean(block_outputs[template_sig]['scalar_ref_points'])
+
+            # print(f"\n--- Normalizing {len(block_outputs)} Blocks to Master/reference {template_sig} ---")
+            
+            # Iterate through ALL blocks and shift them to match the Master
+            for sig, out_dict in block_outputs.items():
+                if sig != template_sig: # Skip the master block itself
+                    # Find this specific block's average scaa=lar field value
+                    block_ref_mean = torch.mean(out_dict['scalar_ref_points'])
+                    
+                    # Calculate the difference in the values
+                    scalar_shift = master_ref_mean - block_ref_mean
+                    
+                    # Apply the shift to the block's grid and reference points
+                    out_dict['Regular'] = out_dict['Regular'] + scalar_shift
+                    out_dict['scalar_ref_points'] = out_dict['scalar_ref_points'] + scalar_shift
+                    
+                    # print(f"   -> Block {sig} shifted by: {scalar_shift.item()")
+
+            ###########
+
+
             # 3. Stitch blocks together based on Boolean Signatures
             final_out, final_res = {}, {}
             template_sig = list(block_outputs.keys())[0]
@@ -319,7 +347,7 @@ if __name__ == "__main__":
                                 [0.800, 0.000, 0.600, 0.05]
                                 ])
     }
-    fault0_trans = torch.diag(torch.tensor([1, 1, 1, 0.05], dtype=torch.float32))
+    fault0_trans = torch.diag(torch.tensor([1, 1, 1, 0.00], dtype=torch.float32))
 
     # Combine both faults into the dictionary
     faults_dict = {
@@ -380,7 +408,9 @@ if __name__ == "__main__":
             [0.0, 1000.0, 260.0, 0.0],
 
             # --- ADDED: Middle Block Orientation (2000 < X < 2750) ---
-            [2200.0, 500.0, 460.0, 0.0],
+            [2200.0, 500.0, 460.0, 0.0], ### This point was given bad results
+
+            # [2300.0, 500.0, 460.0, 0.0],
             
             # --- ADDED: 3rd Block Orientation (X > 2750) ---
             [2950.0, 500.0, 460.0, 0.0]
@@ -393,15 +423,15 @@ if __name__ == "__main__":
             [-0.423, -0.000, 0.906, 0.0],
             [-0.423, -0.000, 0.906, 0.0],
 
-            [-0.423, -0.000, 0.906, -0.07],
+            [-0.423, -0.000, 0.906, -0.007],
 
-            [-0.423, -0.000, 0.906, -0.20]
+            [-0.423, -0.000, 0.906, -0.005]
 
 
         ])
     }
     
-    struct_transformation_matrix = torch.diag(torch.tensor([1, 1, 1, 0.05], dtype=torch.float32))
+    struct_transformation_matrix = torch.diag(torch.tensor([1, 1, 1, 0.00], dtype=torch.float32))
 
     struct_input = {
         'sp_coord': struct_interface_data, 
@@ -420,10 +450,10 @@ if __name__ == "__main__":
     #########################################################################
 
     #### FOR 2D matplotlib #####
-    # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3,3.5, 4, 4.5]:
-    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
+    import time
+    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3,3.5, 4, 4.5]:
+        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+        time.sleep(1)
 
 
     #### FOR 3D matplotlib #####
@@ -445,4 +475,4 @@ if __name__ == "__main__":
     # 
 
     # --- PLOTTING ---
-    model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
+    # model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
