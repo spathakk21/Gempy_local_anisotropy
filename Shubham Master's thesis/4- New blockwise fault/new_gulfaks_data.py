@@ -560,12 +560,12 @@ if __name__ == "__main__":
     fx_positions1 = fault4orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions1 > 0.) & (fx_positions1 <0.2)
 
-    fault4orientation_data['Values'][hanging_wall_mask1, 3] = -0.01
+    fault4orientation_data['Values'][hanging_wall_mask1, 3] = -0.02
 
     fx_positions2 = fault4orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions2 > 0.2) & (fx_positions2 <0.4)
 
-    fault4orientation_data['Values'][hanging_wall_mask1, 3] = 0.01
+    fault4orientation_data['Values'][hanging_wall_mask1, 3] = 0.02
 
     ###############
 
@@ -581,12 +581,12 @@ if __name__ == "__main__":
     fx_positions3 = fault3orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions3 > 0.5) & (fx_positions3 <0.7)
 
-    fault3orientation_data['Values'][hanging_wall_mask1, 3] = -0.01
+    fault3orientation_data['Values'][hanging_wall_mask1, 3] = -0.02
 
     fx_positions4 = fault3orientation_data['Positions'][:, 0]
     hanging_wall_mask1 = (fx_positions4 > 0.7) & (fx_positions4 <1.0)
 
-    fault3orientation_data['Values'][hanging_wall_mask1, 3] = 0.01
+    fault3orientation_data['Values'][hanging_wall_mask1, 3] = 0.02
 
     ###############
 
