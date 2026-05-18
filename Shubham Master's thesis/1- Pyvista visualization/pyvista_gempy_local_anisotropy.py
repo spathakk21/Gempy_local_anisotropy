@@ -2,8 +2,6 @@ import os
 from functools import partial
 import torch
 import numpy as np
-import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
 # import pyvista as pv
 
@@ -100,12 +98,12 @@ class Gempy(grid):
     def interface_data(self, sp_coord):
        
         self.sp_coord = sp_coord
-        print("\n ############# Interface data ############# \n",self.sp_coord)
+        # print("\n ############# Interface data ############# \n",self.sp_coord)
         
         
     def orientation_data(self, op_coord):
         self.op_coord = op_coord
-        print("\n ############# Orientation data############# \n",self.op_coord)
+        # print("\n ############# Orientation data############# \n",self.op_coord)
         
     def activate_custom_grid(self, custom_grid_data):
         if custom_grid_data.shape[1]==len(self.resolution):
@@ -127,21 +125,45 @@ class Gempy(grid):
     
     
     def covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         r_by_at = r/self.a_T
         C_r = self.c_o_T *( 1 - 7 * (r_by_at)**2 + 8.75 * (r_by_at)**3 - 3.5 * (r_by_at)**5 + 0.75 * (r_by_at)**7)
+        
+        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero because of it's polynomial nature.
+        C_r = torch.where(condition, C_r, 0.0)
         return C_r
     
     def first_derivative_covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash =self.c_o_T *( - 14 * (r/self.a_T**2) + 105/4 * (r**2/self.a_T**3) - 35/2 * (r**4/self.a_T**5) + 21/4 * (r**6/self.a_T**7))
         # C_r_dash =self.c_o_T *( - 14 * (r_by_at)**2 + 105/4 * (r_by_at)**3 - 35/2 * (r_by_at)**5 + 21/4 * (r_by_at)**7)/ r
+        
+        ##
+        C_r_dash = torch.where(condition, C_r_dash, 0.0)
         return C_r_dash
     
     def first_derivative_covariance_function_divided_by_r(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash_by_r = self.c_o_T *( - 14 / ((self.a_T)**2) + 105/4 * (r/(self.a_T)**3) - 35/2 * (r**3/(self.a_T)**5) + 21/4 * (r**5/(self.a_T)**7))
+        
+        ##
+        C_r_dash_by_r = torch.where(condition, C_r_dash_by_r, 0.0)
         return C_r_dash_by_r
     
     def second_derivative_covariance_function(self,r):
+
+        condition = r <=self.a_T
+
         C_r_dash_dash =self.c_o_T * 7 * (9 * r ** 5 - 20 * self.a_T ** 2 * r ** 3 + 15 * self.a_T ** 4 * r - 4 * self.a_T ** 5) / (2 * self.a_T ** 7)
+        
+        ##
+        C_r_dash_dash = torch.where(condition, C_r_dash_dash, 0.0)
         return C_r_dash_dash
 
     def squared_euclidean_distance(self, x_1,x_2):
@@ -307,8 +329,8 @@ class Gempy(grid):
         
         ## defining the dips position
         self.Position_G = self.op_coord["Positions"].to(self.dtype) # Location where Dips or gradient are given
-        self.Value_G    = self.op_coord["Values"].to(self.dtype)     # @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
-       
+        self.Value_G    = self.op_coord["Values"].to(self.dtype)     
+
         n= self.Position_G.shape[0] # Total number of points available for gradient or dips
         k = self.Position_G[0].shape[0] # Total number of component available for the gradient
         # Since we have two component of the gradient, we can write the position twice corresponding to each coponent. We are assuming that 
@@ -381,6 +403,8 @@ class Gempy(grid):
         
         sed_dips_SimPoint = self.squared_euclidean_distance(self.Position_G_Modified,grid_data_plus_ref)
         
+        # print(f" Normal wegihts: {self.w}")
+
 
         ####################################### TODO #######################################
         # Check whether we need to transform first_derivative_covariance_function_divided_by_r 
@@ -401,7 +425,13 @@ class Gempy(grid):
         
 
         interpolate_result = sigma_0_grad+ sigma_0_interf
+
+        # print(f"sigma_0_grad: {sigma_0_grad}")
+        # print(f"sigma_0_interf: {sigma_0_interf}")
+        # print(f"interpolate_result: {interpolate_result}")
+        
         #print("interpolate_result ", interpolate_result.shape)
+        
         scalar_field={}
         scalar_field["scalar_ref_points"] = interpolate_result[-self.number_of_layer:]
         if section_plot == False:
@@ -483,7 +513,6 @@ class Gempy(grid):
         self.solution["scalar_field"]= self.scalar_field
         self.solution["result"]=self.results
         return self.solution
-    
     def plot_2D(self, data ,sclar_field,  value, plot_scalar_field = True, plot_input_data=True,section=None):
         
         import matplotlib.pyplot as plt
@@ -503,8 +532,83 @@ class Gempy(grid):
         if plot_scalar_field:
             X = self.mesh[0].numpy()
             Y = self.mesh[1].numpy()
-            Z = sclar_field.reshape(X.shape).numpy()
-            plt.contour(X, Y, Z)
+            import numpy as np    
+            
+            #### For plotting separate(original) scalar fields for each block
+            # Plot independent raw scalar fields for MULTIPLE faults
+            if hasattr(self, 'raw_block_scalars') and hasattr(self, 'raw_block_masks'):
+                cmaps = ['Blues', 'Oranges', 'Greens', 'Purples', 'Reds', 'Greys']
+                cmap_idx = 0
+
+                for sig, raw_scalar in self.raw_block_scalars.items():
+                    Z_block = raw_scalar.reshape(X.shape).detach().cpu().numpy()
+                    mask = self.raw_block_masks[sig].reshape(X.shape).detach().cpu().numpy()
+
+                    # Mask out regions outside this specific block boundary
+                    Z_masked = np.where(mask == 1, Z_block, np.nan)
+
+                    # Only draw if the block actually exists in this 2D slice
+                    if not np.isnan(Z_masked).all():
+                        cmap = cmaps[cmap_idx % len(cmaps)]
+                        contours_block = plt.contour(X, Y, Z_masked, levels=5, cmap=cmap)
+                        plt.clabel(contours_block, inline=True, fontsize=8)
+                        cmap_idx += 1
+
+            # Plot independent raw scalar fields for single fault 
+            elif hasattr(self, 'raw_hw_scalar') and hasattr(self, 'raw_fw_scalar'):
+                # Reshape arrays to 2D grid
+                Z_hw = self.raw_hw_scalar.reshape(X.shape).detach().numpy()
+                Z_fw = self.raw_fw_scalar.reshape(X.shape).detach().numpy()
+                mask = self.raw_hw_mask.reshape(X.shape).detach().numpy()
+
+                # Mask out the opposite sides using np.nan
+                Z_hw_masked = np.where(mask == 1, Z_hw, np.nan)
+                Z_fw_masked = np.where(mask == 0, Z_fw, np.nan)
+
+                # Plot Hanging Wall Contours (using a Blue colormap)
+                contours_hw = plt.contour(X, Y, Z_hw_masked, levels=5, cmap='Blues')
+                plt.clabel(contours_hw, inline=True, fontsize=8)
+
+                # Plot Foot Wall Contours (using an Orange colormap)
+                contours_fw = plt.contour(X, Y, Z_fw_masked, levels=5, cmap='Oranges')
+                plt.clabel(contours_fw, inline=True, fontsize=8)
+                    
+            else:
+                # Fallback to the standard single merged field
+                Z = sclar_field.reshape(X.shape).numpy()
+                contours = plt.contour(X, Y, Z, levels=5)
+                plt.clabel(contours, inline=True, fontsize=10, colors='black')
+            ####
+
+        #### For Fault line(2D) plotting
+        #### For Mulltiple Faults
+        #### Plot multiple 2D fault lines if they exist 
+            if hasattr(self, 'current_fault_z_dict'):
+                for f_name, f_z in self.current_fault_z_dict.items():
+                    fault_Z = f_z.reshape(X.shape).detach().numpy()
+                    
+                    # Fetch threshold for this specific fault
+                    threshold = self.fault_thresholds[f_name]
+                    if isinstance(threshold, torch.Tensor):
+                        threshold = threshold.item()
+                        
+                    # Plot a red dashed line at the exact fault boundary
+                    fault_contour = plt.contour(X, Y, fault_Z, levels=[threshold], colors='red', linewidths=2.5, linestyles='dashed')
+                    
+                    # Label the contour with the specific fault's name (example: "fault1", "fault2", etc)
+                    plt.clabel(fault_contour, inline=True, fontsize=10, colors='red', fmt=f_name)
+        
+        #### For Fault line(2D) plotting
+            # For Single Fault
+            elif hasattr(self, 'current_fault_z'):
+                fault_Z = self.current_fault_z.reshape(X.shape).detach().numpy()
+                threshold = getattr(self, 'fault_threshold', 0.0)
+                if isinstance(threshold, torch.Tensor):
+                    threshold = threshold.item()
+
+                fault_contour = plt.contour(X, Y, fault_Z, levels=[threshold], colors='red', linewidths=2.5, linestyles='dashed')
+                plt.clabel(fault_contour, inline=True, fontsize=10, colors='red', fmt="Fault")
+            ####
         
         # Create a legend
         
@@ -516,7 +620,19 @@ class Gempy(grid):
         for keys, _ in self.sp_coord.items():
             label_map[i+1] = keys
             i = i+1 
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
+
+
         plt.legend(handles=legend_handles, title='Layers')
         plt.xlabel(axis_label[accepted_index[0]] + " Coordinates")
         plt.ylabel(axis_label[accepted_index[1]] + " Coordinates")
@@ -526,7 +642,7 @@ class Gempy(grid):
         ##### Plot surface points and gradients
         ########################################################################################
         if plot_input_data:
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 plt.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], colour[i])
@@ -557,6 +673,45 @@ class Gempy(grid):
         values = value.numpy()  # shape: (N,)
 
         scatter = ax.scatter(points[:, 0], points[:, 1], points[:, 2], c=values, cmap='viridis', s=0.1, alpha=0.5)
+        
+        #### For Fault plane(3D) plotting
+        try:
+            from skimage import measure
+            
+            nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
+            x_min, x_max = self.extent[0], self.extent[1]
+            y_min, y_max = self.extent[2], self.extent[3]
+            z_min, z_max = self.extent[4], self.extent[5]
+
+            def draw_fault_plane(fault_z_tensor, thresh):
+                fault_Z_3d = fault_z_tensor.detach().cpu().numpy().reshape((nx, ny, nz))
+                if isinstance(thresh, torch.Tensor):
+                    thresh = thresh.item()
+                
+                # Extract isosurface
+                verts, faces, normals, vals = measure.marching_cubes(fault_Z_3d, level=thresh)
+                
+                # Scale coordinates to real-world extent
+                x_scaled = x_min + (verts[:, 0] / (nx - 1)) * (x_max - x_min)
+                y_scaled = y_min + (verts[:, 1] / (ny - 1)) * (y_max - y_min)
+                z_scaled = z_min + (verts[:, 2] / (nz - 1)) * (z_max - z_min)
+                
+                ax.plot_trisurf(x_scaled, y_scaled, faces, z_scaled, color='red', alpha=0.4, linewidth=0.1)
+
+            # For multi faults
+            if hasattr(self, 'current_fault_z_dict'):
+                for f_name, f_z in self.current_fault_z_dict.items():
+                    draw_fault_plane(f_z, self.fault_thresholds[f_name])
+            
+            # For single fault
+            elif hasattr(self, 'current_fault_z'):
+                draw_fault_plane(self.current_fault_z, getattr(self, 'fault_threshold', 0.0))
+                
+        except ImportError:
+            print("Note: Install scikit-image ('pip install scikit-image') for 3D Matplotlib fault surfaces.")
+        except Exception as e:
+            pass
+
         # Create divider and append colorbar axis
     
         # Optional colorbar
@@ -571,7 +726,17 @@ class Gempy(grid):
             label_map[i+1] = keys
             i = i+1 
         
-        legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        # legend_handles = [plt.Line2D([0], [0], marker='o', color='w', markerfacecolor=scatter.cmap(scatter.norm(label)), markersize=10, label=label_map[label]) for label in legend_labels]
+        
+        #######################
+        legend_handles = [
+        plt.Line2D([0], [0], marker='o', color='w', 
+               markerfacecolor=scatter.cmap(scatter.norm(label)), 
+               markersize=10, 
+               label=label_map[label]) 
+        for label in legend_labels if label in label_map
+        ]
+        #####################
         plt.legend(handles=legend_handles, title='Layers',loc="upper left")
         
         ################################################################################
@@ -601,7 +766,7 @@ class Gempy(grid):
         ########################################################################################
         if plot_input_data:
             
-            colour = ['ro', 'bo', 'go']
+            colour = ['ro', 'bo', 'go', 'mo', 'ko', 'yo', 'co']
             i=0
             for _, values in self.sp_coord.items():
                 ax.plot(values[:,accepted_index[0]], values[:,accepted_index[1]], values[:,accepted_index[2]], colour[i])
@@ -723,68 +888,113 @@ class Gempy(grid):
 
    
     ##### ---
-    def plot_interactive_section(self, plot_input_data=True, only_surface_mode = False):
+    def plot_interactive_section(self, plot_input_data=True, only_surface_mode=False):
         """
-        Creates an interactive 3D PyVista plot with a time slider 
-        'Args:
-        plot_input_data: if you want to view the interface points and gradient vectors - set it to True
-         
-        only_surface_mode: if you want to view only the contoured surface with the input points, no point cloud - set it to True
+        Creates an interactive 3D PyVista plot equipped with a time slider to visualize 
+        the kinematic evolution of the geological model. 
         
+        Parameters:
+        -----------
+        plot_input_data : bool
+            If True, visualizes the input structural data (surface points and orientation gradients).
+        only_surface_mode : bool
+            If True, hides the volumetric geological grid and only displays structural surfaces 
+            (faults and layer interfaces).
         """
+
+        # Verify if the PyVista library is installed in the environment
         if not PYVISTA_AVAILABLE:
             print("PyVista is required for interactive plotting.")
             return
 
+        # Define the temporal dimension (4th dimension: x, y, z, t)
         slider_dim=4
-        # Setup range for the slider dimension
-        # Convert 1-based index to 0-based
         idx = slider_dim - 1
-        t_min = self.extent[2*idx]   # taking t value directly from model extent definition
+
+        # Extract the temporal bounds from the model's extent array
+        t_min = self.extent[2*idx]   
         t_max = self.extent[2*idx + 1]
         
-        # Initial Plot at min value
+        # Initialize the state at the earliest time step
         current_t = t_min
         current_section = {slider_dim : current_t}
         
-        # Generates the grid points for the initial frame
+        # Generate current section grid
         full_grid_hyp, final_grid = self.get_section_grid(current_section)
         
-        ##Pre-compute weights if missing ##
-        # This ensures the slider is fast because we don't invert the matrix every frame
+        # If universal co-kriging hasn't been solved yet, compute for kriging weights
         if not hasattr(self, 'w'):
             self.Ge_model() 
 
-        # Compute initial solution
-        scalar_field, results = self.Solution_grid(grid_coord=full_grid_hyp, section_plot=True, recompute_weights=False)
+        # Evaluate scalar field
+        # It dynamically checks if the model contains block-wise faulted grids 
+        # or continuous stratigraphic grids.
+        if hasattr(self, 'compute_faulted_grid'):
+            scalar_field, results = self.compute_faulted_grid(full_grid_hyp)
+        else:
+            scalar_field, results = self.Solution_grid(grid_coord=full_grid_hyp, section_plot=True, recompute_weights=False)
         
-        # print(scalar_field, results)
-
-        # Determines location - grid points
+        # Extract spatial points and their computed lithological IDs
         points = final_grid.numpy()
-
-        # Determines colour
-        # Rounds float results to integers (Rock IDs)
         values = torch.round(results['Regular']).numpy()
         
-        # Create PyVista Mesh - point cloud
+        # --- PYVISTA MESH INITIALIZATION ---
+        # Create an unstructured point cloud mesh and assign lithology scalars
         mesh = pv.PolyData(points)
-        # attaching rock id to mesh
         mesh["Lithology"] = values
         
-        # Visualization window
         plotter = pv.Plotter(window_size=[1024, 768])
 
+        # Construct a 3D structured grid (volumetric block) to hold the scalar fields.
+        # This grid is required for generating isosurfaces(faults, etc).
+        nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
+        vol_grid = pv.StructuredGrid()
+        vol_grid.points = points
+        vol_grid.dimensions = [nx, ny, nz] 
+        vol_grid["Lithology"] = values
+        
 
         if only_surface_mode is False:
-
             plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
-                         point_size=5, render_points_as_spheres=True, opacity=0.5,
-                         show_scalar_bar=False,label="Geological Grid")
+                             point_size=5, render_points_as_spheres=True, opacity=0.5,
+                             show_scalar_bar=False, label="Geological Grid")
+            
+        # --- FAULT PLANE PLOTTING ---
+        # Dictionary to track PyVista actors for fault planes, allowing them 
+        # to be dynamically removed and redrawn when the time slider moves.
+        self.fault_actors = {}
 
-        # #########################
-        # ADDING LEGEND 
-        # ########################
+        def add_pyvista_fault(v_grid, plt_obj, fault_z_tensor, thresh, name="Fault Plane"):
+            """
+            Helper function to extract and plot a 3D fault plane
+            """
+            array_name = f"Fault_Field_{name}"
+            v_grid[array_name] = fault_z_tensor.detach().cpu().numpy().flatten(order="F")
+            
+            if isinstance(thresh, torch.Tensor):
+                thresh = thresh.item()
+            
+            try:
+                # Extract the 3D surface where the scalar field equals the fault threshold
+                fault_surface = v_grid.contour(isosurfaces=[thresh], scalars=array_name)
+                if fault_surface.n_points > 0:
+                    actor = plt_obj.add_mesh(fault_surface, color="red", opacity=0.9, label=name)
+                    self.fault_actors[name] = actor
+            except Exception as e:
+                # Pass silently if the fault plane is eroded or outside the grid bounds at this time step
+                pass 
+
+        # Evaluate and map faults (Handles both multiple and single fault models dynamically)
+        # For multiple faults
+        if hasattr(self, 'current_fault_z_dict'):
+            for f_name, f_z in self.current_fault_z_dict.items():
+                add_pyvista_fault(vol_grid, plotter, f_z, self.fault_thresholds[f_name], name=f_name)
+        # For single fault
+        elif hasattr(self, 'current_fault_z'):
+            add_pyvista_fault(vol_grid, plotter, self.current_fault_z, getattr(self, 'fault_threshold', 0.0), name="Fault Plane")
+
+
+        # --- LEGEND AND AXES ---
         label_map = {1: "Basement"}
         i = 1
         for key in self.sp_coord.keys():
@@ -792,163 +1002,121 @@ class Gempy(grid):
             i += 1
             
         cmap = plt.get_cmap("viridis")
-        
-        # Number of rock types = Basement + defined layers
         max_possible_val = 1 + len(self.sp_coord)
-        # Creates a scaling function. It maps IDs (1 to 2) to the color range (0.0 to 1.0).
         norm = plt.Normalize(vmin=1, vmax=max_possible_val)
-        
 
-        # Actual pair list (Name, Colour) for legend box
         legend_entries = []
-        # Add all possible layers to legend, not just currently visible ones, so legend is stable
         for val in range(1, max_possible_val + 1):
+
+             
              color = cmap(norm(val))
              name = label_map.get(val, f"Layer {val}")
+
+             # Exclude structural "fault" names from the stratigraphy legend
+             # we can modify this according to oour naming of fault planes
+             if "fault" in str(name).lower():
+                 continue 
+                 
              legend_entries.append((name, color))
              
-        plotter.add_legend(legend_entries, loc = 'lower right')
-
-
-        # Add XYZ coordinate arrows 
+        plotter.add_legend(legend_entries, loc='lower right')
         plotter.add_axes()
-
-        # Show X,Y,Z extent on the grid box
         plotter.show_grid()
 
-
-        ####################################################################
-        ################ For Contouring the interface ######################
-        ####################################################################
-
-
-        # using pyvista structure grid - to get connected gird
-
-        # Grid dimensions from resolution of Gempy model
-        nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
-        
-        vol_grid = pv.StructuredGrid()
-        vol_grid.points = points
-        vol_grid.dimensions = [nx, ny, nz] 
-
-        # Assign the rock IDs to the every point in volume
-        vol_grid["Lithology"] = values
-
-
-        # Generate Initial Contours
-        # Taking surfaces at 1.5, 2.5, etc. (The boundary between ID 1 and 2)
+        # --- GEOLOGICAL INTERFACES ---
         max_layer_val = values.max()
         contour_levels = [i + 0.5 for i in range(1, int(max_layer_val) + 1)]
-        #####  contour_levels = [1.5, 2.5, 3.5, ......]
-
-        # Calculating contour surface between two rocks 
-        # interfaces is the new mesh object
         interfaces = vol_grid.contour(isosurfaces=contour_levels)
-
-        # Adding contours to the plotter
         interface_actor = plotter.add_mesh(interfaces, color="white", opacity=0.7, label="Interface")
 
-        ##########################################################################
-                        # PLOTTING INPUT DATA #
-        ##########################################################################
-
+        # --- INPUT DATA VISUALIZATION ---
         if plot_input_data:
             input_colours = ["red", "blue", "green"]
-
             i = 0
-            for _, coords in self.sp_coord.items():
-                if coords.shape[1] > 3:
-                     # Remove 4th dimension (Time) for plotting location
-                    valid_coords = coords[:,[0,1,2]].numpy()
-                else:
-                    valid_coords = coords.numpy()
 
+            # Plot interface points
+            for key, coords in self.sp_coord.items():
+                valid_coords = coords[:,[0,1,2]].numpy() if coords.shape[1] > 3 else coords.numpy()
                 c = input_colours[i % len(input_colours)]
-                
                 plotter.add_points(valid_coords, color=c, point_size=12, 
                                    render_points_as_spheres=True, label=f"Input: {key}")
                 i += 1
 
-            ######## ADDING GRADIENT ARROWS #########
-
+            # Plot orientation gradients
             if hasattr(self, 'Position_G') and hasattr(self, 'Value_G'):
-                # Extract XYZ for positions
                 pos_g = self.Position_G[:, [0, 1, 2]].numpy() if self.Position_G.shape[1] > 3 else self.Position_G.numpy()
-                
-                # Extract XYZ for vectors (ignoring Time component of the vector if it exists)
                 vec_g = self.Value_G[:, [0, 1, 2]].numpy() if self.Value_G.shape[1] > 3 else self.Value_G.numpy()
                 
-                # Create PyVista Arrow object
+                # Render gradients as 3D vector arrows indicating geological dip
                 arrows = pv.PolyData(pos_g)
                 arrows["vectors"] = vec_g
-                # "Glyph" filters scale geometry (arrows) at every point
-                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.4)
-                
+                arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.1)
                 plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
 
-    
 
-        ###### Callback for time slider #######
-
+        # --- Callback for time slider --- #
         def on_slider_change(t_value):
+            """
+            Callback function executed whenever the time slider is adjusted.
+            It recalculates the model geometry for the new time step and rapidly updates 
+            the plot
+            """
+            nonlocal interface_actor 
 
-            ''' Value is the new Time t.'''
-
-            # old contour variable
-            nonlocal interface_actor         #Allow updating the contour variable
-
-            # Update section
-            new_section = {slider_dim: t_value}
-            new_section[slider_dim] = t_value
             
-
-            # Recalculate Grid positions
-            # Regenerates grid points for the new t
+            new_section = {slider_dim: t_value}
             new_full_grid, _ = self.get_section_grid(new_section)
             
-            # Re-calculates lithology for new points and (Fast, weights are solved already)
-            _, new_result = self.Solution_grid(grid_coord=new_full_grid, section_plot=True, recompute_weights=False)
+            # Recompute the geological scalar fields for the new structural geometry at time = 't_value'
+            if hasattr(self, 'compute_faulted_grid'):
+                _, new_result = self.compute_faulted_grid(new_full_grid)
+            else:
+                _, new_result = self.Solution_grid(grid_coord=new_full_grid, section_plot=True, recompute_weights=False)
+            
             new_values = torch.round(new_result['Regular']).numpy()
-            
-            # Updates the colors on the existing mesh
-            mesh["Lithology"] = torch.round(new_result['Regular']).numpy()
+            mesh["Lithology"] = new_values
 
-
-            # ###Update Contours ###
-
-
-            # Update the volume grid data
+            # Dynamically update the visual mesh lithology arrays
             vol_grid.points = final_grid.numpy() 
-
-            #  Updates the grid with the new Rock IDs calculated for the new Time (t)
             vol_grid["Lithology"] = new_values   
-            
-            # Recalculate the new contour surface
             new_interfaces = vol_grid.contour(isosurfaces=contour_levels)
-            
-            # Swap the actor in the scene - removes the old contour surface as we change t
-            plotter.remove_actor(interface_actor)
 
-            # checks if there are boundaries to draw or not
+            # --- UPDATE FAULT PLANES ---
+            # 1. Remove old fault planes
+            for actor in self.fault_actors.values():
+                plotter.remove_actor(actor)
+            self.fault_actors.clear()
+
+            # 2. Draw new fault planes for the current time step
+            if hasattr(self, 'current_fault_z_dict'):
+                for f_name, f_z in self.current_fault_z_dict.items():
+                    add_pyvista_fault(vol_grid, plotter, f_z, self.fault_thresholds[f_name], name=f_name)
+            elif hasattr(self, 'current_fault_z'):
+                add_pyvista_fault(vol_grid, plotter, self.current_fault_z, getattr(self, 'fault_threshold', 0.0), name="Fault Plane")
+            
+            # Replace the old interface boundaries with the newly shifted ones
+            plotter.remove_actor(interface_actor)
             if new_interfaces.n_points > 0:
                 interface_actor = plotter.add_mesh(new_interfaces, color="white", opacity=0.7)
 
-
             return
 
-        # Add Slider
+        # Adding time slider
         plotter.add_slider_widget(on_slider_change, [t_min, t_max], 
-                                  title=f"T Evolution",
-                                  pointa=(0.65, 0.90), # start of slider
-                                  pointb=(0.95, 0.90), # end of slider
+                                  title=f"time evolution",
+                                  pointa=(0.65, 0.90),
+                                  pointb=(0.95, 0.90),
                                   color="black")
         
         print(f"Opening Interactive Plot. Use the slider to change T dimension...")
+        bounds = vol_grid.bounds
+        plotter.show_grid(bounds=bounds)
         plotter.show()
+
 
 def main():        
     
-    # Random example of flattening of a single fold
+    ##### Random example of flattening of a single fold
 
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
@@ -1013,6 +1181,7 @@ def main():
         [ 0.174, 0.0, 0.985, 0.10]   
     ])}
 
+
     gp.interface_data(interface_data)
     gp.orientation_data(orientation_data)
     gp.interpolation_options()
@@ -1030,15 +1199,17 @@ def main():
     gp.active_grid()
     sol = gp.Solution()
 
+    # print(sol['scalar_field'], sol['result'])
+
     #########################################################################
     ###### Uncomment the below code lines for matplotlib visualization ######
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -1058,7 +1229,7 @@ def main():
     ###############################################################
 
     # print("\nStarting Interactive Visualization...")
-    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
 
 if __name__ == "__main__":
