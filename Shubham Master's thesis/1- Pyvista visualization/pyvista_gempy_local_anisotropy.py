@@ -1110,7 +1110,6 @@ class Gempy(grid):
         
         print(f"Opening Interactive Plot. Use the slider to change T dimension...")
         bounds = vol_grid.bounds
-        
         plotter.show_grid(bounds=bounds)
         plotter.show()
 
