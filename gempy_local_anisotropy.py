@@ -119,21 +119,45 @@ class Gempy(grid):
     
     
     def covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         r_by_at = r/self.a_T
         C_r = self.c_o_T *( 1 - 7 * (r_by_at)**2 + 8.75 * (r_by_at)**3 - 3.5 * (r_by_at)**5 + 0.75 * (r_by_at)**7)
+        
+        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero because of it's polynomial nature.
+        C_r = torch.where(condition, C_r, 0.0)
         return C_r
     
     def first_derivative_covariance_function(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash =self.c_o_T *( - 14 * (r/self.a_T**2) + 105/4 * (r**2/self.a_T**3) - 35/2 * (r**4/self.a_T**5) + 21/4 * (r**6/self.a_T**7))
         # C_r_dash =self.c_o_T *( - 14 * (r_by_at)**2 + 105/4 * (r_by_at)**3 - 35/2 * (r_by_at)**5 + 21/4 * (r_by_at)**7)/ r
+        
+        ##
+        C_r_dash = torch.where(condition, C_r_dash, 0.0)
         return C_r_dash
     
     def first_derivative_covariance_function_divided_by_r(self, r):
+
+        condition = r <=self.a_T
+
         C_r_dash_by_r = self.c_o_T *( - 14 / ((self.a_T)**2) + 105/4 * (r/(self.a_T)**3) - 35/2 * (r**3/(self.a_T)**5) + 21/4 * (r**5/(self.a_T)**7))
+        
+        ##
+        C_r_dash_by_r = torch.where(condition, C_r_dash_by_r, 0.0)
         return C_r_dash_by_r
     
     def second_derivative_covariance_function(self,r):
+
+        condition = r <=self.a_T
+
         C_r_dash_dash =self.c_o_T * 7 * (9 * r ** 5 - 20 * self.a_T ** 2 * r ** 3 + 15 * self.a_T ** 4 * r - 4 * self.a_T ** 5) / (2 * self.a_T ** 7)
+        
+        ##
+        C_r_dash_dash = torch.where(condition, C_r_dash_dash, 0.0)
         return C_r_dash_dash
 
     def squared_euclidean_distance(self, x_1,x_2):
