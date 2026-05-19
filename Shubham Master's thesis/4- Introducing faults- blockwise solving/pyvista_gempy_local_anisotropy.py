@@ -385,6 +385,8 @@ class Gempy(grid):
         
         self.w = torch.linalg.solve(K,b)
     
+
+    
     def Solution_grid(self, grid_coord, section_plot= False, recompute_weights=True):
         
         # Optimization: Only solve the linear system if requested or if weights don't exist
