@@ -13,13 +13,13 @@ except ImportError:
     print("Warning: PyVista not installed. Please install.")
     PYVISTA_AVAILABLE = False
 
-# import pyro
-# import pyro.distributions as dist
+import pyro
+import pyro.distributions as dist
 
 
-# # for CI testing
-# smoke_test = ('CI' in os.environ)
-# pyro.set_rng_seed(1)
+# for CI testing
+smoke_test = ('CI' in os.environ)
+pyro.set_rng_seed(1)
 
 
 class grid:
@@ -98,12 +98,12 @@ class Gempy(grid):
     def interface_data(self, sp_coord):
        
         self.sp_coord = sp_coord
-        print("\n ############# Interface data ############# \n",self.sp_coord)
+        # print("\n ############# Interface data ############# \n",self.sp_coord)
         
         
     def orientation_data(self, op_coord):
         self.op_coord = op_coord
-        print("\n ############# Orientation data############# \n",self.op_coord)
+        # print("\n ############# Orientation data############# \n",self.op_coord)
         
     def activate_custom_grid(self, custom_grid_data):
         if custom_grid_data.shape[1]==len(self.resolution):
@@ -131,7 +131,7 @@ class Gempy(grid):
         r_by_at = r/self.a_T
         C_r = self.c_o_T *( 1 - 7 * (r_by_at)**2 + 8.75 * (r_by_at)**3 - 3.5 * (r_by_at)**5 + 0.75 * (r_by_at)**7)
         
-        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero
+        ## Because if r is much greater than the range a_T - the covariance function does not goes to zero because of it's polynomial nature.
         C_r = torch.where(condition, C_r, 0.0)
         return C_r
     
@@ -144,7 +144,6 @@ class Gempy(grid):
         
         ##
         C_r_dash = torch.where(condition, C_r_dash, 0.0)
-        
         return C_r_dash
     
     def first_derivative_covariance_function_divided_by_r(self, r):
@@ -155,7 +154,6 @@ class Gempy(grid):
         
         ##
         C_r_dash_by_r = torch.where(condition, C_r_dash_by_r, 0.0)
-        
         return C_r_dash_by_r
     
     def second_derivative_covariance_function(self,r):
@@ -166,8 +164,6 @@ class Gempy(grid):
         
         ##
         C_r_dash_dash = torch.where(condition, C_r_dash_dash, 0.0)
-
-        
         return C_r_dash_dash
 
     def squared_euclidean_distance(self, x_1,x_2):
@@ -315,90 +311,7 @@ class Gempy(grid):
         rest_layer_points = torch.concat(rest_layer_points,axis = 0)
         return ref_layer_points,rest_layer_points
         
-
-
-    ##############################################################################
-    ########### SETTING BASIS FUNCTION FOR ADDING TREND TO THE MEAN ###############
-    ##############################################################################
-    def set_evaluate_basis(self, x, active_dims=[0, 1, 2, 3]):
-        """
-        Calculates the F matrix -- which represents polynomial trend of mean at data points
-        Args:
-            x: Tensor(N, dim) --> Input coordinates
-            powers: List --> polynomial powers to calculate
-            active_dims: List --> which dimensions to use. For eg. [0,1,2] means [X,Y,Z] and not time
-            Takes all by default if none is given
-
-        Returns:
-            F_vals: (L, N) --> Value of basis functions at points
-            F_grads: (L, N, dim) --> The derivatives of basis functions
-        """
-
-        # Get dimensions of input points
-        N, dim = x.shape
-        # N is the number of data points
-        # dim is equal to 4
-        # print(dim)
         
-        # Default to all dimensions if not specified
-        if active_dims is None:
-            active_dims = list(range(dim))
-        
-        # Empty lists for storing values
-        vals_list = []
-        grads_list = []
-
-
-        # 1. Linear Terms (x, y, z, t)
-        for i in active_dims:
-            # Value: x_i
-            val = x[:, i]
-            
-            # Gradient: 1.0 at index i
-            grad = torch.zeros(N, dim, dtype=self.dtype)
-            
-            # derivate of a variable with itself will be 1
-            # so ith column is 1.0
-            grad[:, i] = 1.0
-            
-            vals_list.append(val)
-            grads_list.append(grad)
-
-        # 2. Quadratic Terms (x^2, y^2, z^2, t^2)
-        for i in active_dims:
-            # Value: x_i^2
-            val = x[:, i]**2
-            
-            # Power rule -- Gradient: 2 * x_i at index i
-            grad = torch.zeros(N, dim, dtype=self.dtype)
-            grad[:, i] = 2.0 * x[:, i]
-            
-            vals_list.append(val)
-            grads_list.append(grad)
-
-        # 3. Cross Terms (xy, xz, xt, yz, yt, zt)
-        # Finding every unique pair from given pair of dimensions
-        from itertools import combinations
-        for i, j in combinations(active_dims, 2):
-            #Multiplying coordinates
-            val = x[:, i] * x[:, j]
-            
-            # Gradient:
-            grad = torch.zeros(N, dim, dtype=self.dtype)
-            grad[:, i] = x[:, j]
-            grad[:, j] = x[:, i]
-            
-            vals_list.append(val)
-            grads_list.append(grad)
-
-        # Stack Results
-        
-        F_vals = torch.stack(vals_list, dim=0)  # Shape: (N_terms, N)
-        F_grads = torch.stack(grads_list, dim=0) # Shape: (N_terms, N, dim)
-
-        return F_vals, F_grads
-
-
     def Ge_model(self, nugget_effect_grad=1e-8,nugget_effect_interface=1e-8):
         ''' 
             Args:
@@ -416,8 +329,8 @@ class Gempy(grid):
         
         ## defining the dips position
         self.Position_G = self.op_coord["Positions"].to(self.dtype) # Location where Dips or gradient are given
-        self.Value_G    = self.op_coord["Values"].to(self.dtype)     # @ self.Transformation_matrix.T # Gx, Gy, ..., Gk are the componet of gradient available at the given location
-       
+        self.Value_G    = self.op_coord["Values"].to(self.dtype)     
+
         n= self.Position_G.shape[0] # Total number of points available for gradient or dips
         k = self.Position_G[0].shape[0] # Total number of component available for the gradient
         # Since we have two component of the gradient, we can write the position twice corresponding to each coponent. We are assuming that 
@@ -470,96 +383,12 @@ class Gempy(grid):
         
         b = torch.reshape(b,shape = [b.shape[0],1])
         
-        # ######################################
-        # F MATRIX CONSTRUCTION
-        # ######################################
-
-        # Set on which variables I want basis to be applied
-        # [0,1,2] means [x,y,z]
-        active_dimensions = [0,1,2] 
-
-        # Calculating Basis at Gradient Points
-        _, dF_grad = self.set_evaluate_basis(self.Position_G, active_dims=active_dimensions) 
-        # print(dF_grad) # Try printing to check F_grad structure
-
-        # Reshaping dF_grad matrix
-        L = dF_grad.shape[0]  # Number of basis polynomial terms(9) = [x,y,z, x2, y2, z2, xy,xz, yz]
-        # print(L)
-
-
-        n_grad_pts= self.Position_G.shape[0] # Total number of points available for gradient 
-        # print(n_grad_pts)
-        
-        
-        k_dim = self.Position_G.shape[1] # Total number of component available for the gradient
-        # print(k_dim)
-      
-
-        # Initialize matrix for storing F_grad
-        F_gradients = torch.zeros(L, n_grad_pts * k_dim)
-        
-        # Storing Gradient terms
-        for u in range(k_dim):
-            start_col = u * n_grad_pts
-            end_col = (u + 1) * n_grad_pts
-            F_gradients[:, start_col:end_col] = dF_grad[:, :, u]
-
+        self.w = torch.linalg.solve(K,b)
     
-        ########### Calculating Basis function value at Interface Points ######################
-
-        # Using (reference - rest) for all the layers
-        F_vals_rest, _ = self.set_evaluate_basis(self.rest_layer_points,active_dims=active_dimensions)
-        F_vals_ref, _ = self.set_evaluate_basis(self.ref_layer_points, active_dims=active_dimensions)
-        F_interface = -F_vals_rest + F_vals_ref 
-
-        
-        # Finalizing F_matrix
-        F_matrix = torch.cat([F_gradients, F_interface], dim=1)
-        self.F_matrix = F_matrix 
-        
-        # print(f"The F matrix is:{F_matrix}")
-
-        # print(f"The shape of F matrix is:{F_matrix.shape}")
-
-        
-        # Augment K for solving
-        ###### [C  F']
-        ###### [F  0 ]
-
-        zeros_corner = torch.zeros(L, L)
-
-        # Add a tiny number to the diagonal (kind of nugget effect)
-        zeros_corner = zeros_corner + 1e-6 * torch.eye(L)
-        
-
-        top = torch.cat([K, F_matrix.T], dim=1)
-        bottom = torch.cat([F_matrix, zeros_corner], dim=1)
-        K_aug = torch.cat([top, bottom], dim=0)
-        
-        # RHS of equations
-        # DOUBT
-        zeros_b = torch.zeros(L, 1)
-        b_aug = torch.cat([b, zeros_b], dim=0)
-        
-        # print(f"The RHS b vector is: {b_aug}")
-
-        # Solve
-        # w contains --> weights Covariance term(gradients and interface) and coefficients of basis term
-        # TO DO --> check it
-        self.w = torch.linalg.solve(K_aug, b_aug)
-        
-        # Storing these settings for Solution_grid
-        self.num_basis_terms = L
-        # self.last_powers = basis_powers
-        self.last_active_dims = active_dimensions
 
     
     def Solution_grid(self, grid_coord, section_plot= False, recompute_weights=True):
         
-        # print("Original function")
-
-        # INPUT --> grid_coord: grid points to evaluate
-
         # Optimization: Only solve the linear system if requested or if weights don't exist
         if recompute_weights or not hasattr(self, 'w'):
             self.Ge_model()
@@ -571,88 +400,40 @@ class Gempy(grid):
         else:
             grid_data_plus_ref = self.ref_points
             
-        ##############################################
-
-        # Separating Weights into:
-        # w_dual (gradient and interface) Covariance weights
-        # mu = coefficients of basis polynomial for given dataset
-        w_dual = self.w[:-self.num_basis_terms]
-        # print(f"All wegihts excluding basis coefficients are: {w_dual}")
-        # print(w_dual.shape)
-
-
-        mu = self.w[-self.num_basis_terms:]
-        # print(f"Basis coefficients are: {mu}")
-        # print(mu.shape)
-
-        # print(mu)
-
-        ##############################################
-
-
         #print("grid_coord_plus shape",grid_data_plus_ref.shape)
         hu_Simpoints = self.cartesian_dist_no_tile(self.Position_G,grid_data_plus_ref)
         
         sed_dips_SimPoint = self.squared_euclidean_distance(self.Position_G_Modified,grid_data_plus_ref)
         
+        # print(f" Normal wegihts: {self.w}")
+
 
         ####################################### TODO #######################################
         # Check whether we need to transform first_derivative_covariance_function_divided_by_r 
         # by transformation matrix somehow
         ####################################################################################
-        # Contribution from gradient data points
+        sigma_0_grad  =  self.w[:self.Position_G.shape[0] *self.Position_G.shape[1]] * (hu_Simpoints * self.first_derivative_covariance_function_divided_by_r(sed_dips_SimPoint))
         
-        # sigma_0_grad  =  self.w[:self.Position_G.shape[0] *self.Position_G.shape[1]] * (hu_Simpoints * self.first_derivative_covariance_function_divided_by_r(sed_dips_SimPoint))
-        
-        sigma_0_grad  =  w_dual[:self.Position_G.shape[0] *self.Position_G.shape[1]] * (hu_Simpoints * self.first_derivative_covariance_function_divided_by_r(sed_dips_SimPoint))
-
-        # print(self.Position_G.shape[0] *self.Position_G.shape[1])
-
         sigma_0_grad = torch.sum(sigma_0_grad,axis=0)
         
 
         sed_rest_SimPoint = self.squared_euclidean_distance(self.rest_layer_points,grid_data_plus_ref)
         sed_ref_SimPoint = self.squared_euclidean_distance(self.ref_layer_points,grid_data_plus_ref)
 
-        # Contribution from interface data points
-
-        # sigma_0_interf =  self.w[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
         
-        
-        sigma_0_interf =  w_dual[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
+        sigma_0_interf =  self.w[self.Position_G.shape[0]*self.Position_G.shape[1]:]*(-self.covariance_function(sed_rest_SimPoint) + self.covariance_function(sed_ref_SimPoint))
         sigma_0_interf = torch.sum(sigma_0_interf,axis = 0)
-
-        # print(f"self.covariance_function(sed_rest_SimPoint):{self.covariance_function(sed_rest_SimPoint)}")
-        # print(f"self.covariance_function(sed_ref_SimPoint): {self.covariance_function(sed_ref_SimPoint)}")
         
         
-        # print(self.Position_G.shape[0]*self.Position_G.shape[1])
-        ################################################################
 
-        ###########  Universal Calculation #############
-        # Use the same settings (powers/dims) as used in Ge_model
-        dims = getattr(self, 'last_active_dims', [0, 1, 2])
-        
-        ### Re-evaluate basis at the grid locations
-        F_vals_sim, _ = self.set_evaluate_basis(grid_data_plus_ref, active_dims=dims)
-
-        #### Coefficienets* Basis value <--> mu * f(x_grid)
-        basis_value = torch.matmul(mu.T, F_vals_sim).squeeze()
-
-        # Final estimation of Z*
-        ### Z* = Covraince parts (grad + interface) + Basis function part
-        interpolate_result = sigma_0_grad + sigma_0_interf  + basis_value
+        interpolate_result = sigma_0_grad+ sigma_0_interf
 
         # print(f"sigma_0_grad: {sigma_0_grad}")
         # print(f"sigma_0_interf: {sigma_0_interf}")
-        # print(f"basis_value: {basis_value}")
         # print(f"interpolate_result: {interpolate_result}")
-
-        ################################################################
-
-
-        # interpolate_result = sigma_0_grad+ sigma_0_interf
+        
         #print("interpolate_result ", interpolate_result.shape)
+        
         scalar_field={}
         scalar_field["scalar_ref_points"] = interpolate_result[-self.number_of_layer:]
         if section_plot == False:
@@ -709,11 +490,7 @@ class Gempy(grid):
                     start = end
         else:
             results["Regular"] = modified_interpolate_results_final[:-self.number_of_layer]
-
-
-        # print(f"Scalarfield: {scalar_field}")
-        # print(f"results: {results}")        
-
+                
         return scalar_field, results
         
     def Solution(self ):
@@ -738,7 +515,6 @@ class Gempy(grid):
         self.solution["scalar_field"]= self.scalar_field
         self.solution["result"]=self.results
         return self.solution
-    
     def plot_2D(self, data ,sclar_field,  value, plot_scalar_field = True, plot_input_data=True,section=None):
         
         import matplotlib.pyplot as plt
@@ -877,7 +653,7 @@ class Gempy(grid):
             for i in range(self.Position_G.shape[0]):
                 plt.plot(self.Position_G[i,accepted_index[0]], self.Position_G[i,accepted_index[1]], 'go')
                 plt.quiver([self.Position_G[i,accepted_index[0]]],[self.Position_G[i,accepted_index[1]]],self.Value_G[i][accepted_index[0]],self.Value_G[i][accepted_index[1]],color='r')
-        plt.savefig("Plot_2D_basis.png")
+        plt.savefig("Plot_2D.png")
         plt.close()
 
         # ----
@@ -1006,7 +782,7 @@ class Gempy(grid):
                 ax.quiver([self.Position_G[i,accepted_index[0]]],[self.Position_G[i,accepted_index[1]]],[self.Position_G[i,accepted_index[2]]],self.Value_G[i][accepted_index[0]],self.Value_G[i][accepted_index[1]],self.Value_G[i][accepted_index[2]],color='r')
 
         
-        plt.savefig("Plot_3D_basis.png")
+        plt.savefig("Plot_3D.png")
         plt.close()
 
         # ---
@@ -1116,56 +892,84 @@ class Gempy(grid):
     ##### ---
     def plot_interactive_section(self, plot_input_data=True, only_surface_mode=False):
         """
-        Creates an interactive 3D PyVista plot with a time slider 
+        Creates an interactive 3D PyVista plot equipped with a time slider to visualize 
+        the kinematic evolution of the geological model. 
+        
+        Parameters:
+        -----------
+        plot_input_data : bool
+            If True, visualizes the input structural data (surface points and orientation gradients).
+        only_surface_mode : bool
+            If True, hides the volumetric geological grid and only displays structural surfaces 
+            (faults and layer interfaces).
         """
+
+        # Verify if the PyVista library is installed in the environment
         if not PYVISTA_AVAILABLE:
             print("PyVista is required for interactive plotting.")
             return
 
+        # Define the temporal dimension (4th dimension: x, y, z, t)
         slider_dim=4
         idx = slider_dim - 1
+
+        # Extract the temporal bounds from the model's extent array
         t_min = self.extent[2*idx]   
         t_max = self.extent[2*idx + 1]
         
+        # Initialize the state at the earliest time step
         current_t = t_min
         current_section = {slider_dim : current_t}
         
+        # Generate current section grid
         full_grid_hyp, final_grid = self.get_section_grid(current_section)
         
+        # If universal co-kriging hasn't been solved yet, compute for kriging weights
         if not hasattr(self, 'w'):
             self.Ge_model() 
 
-        # Initial evaluation
+        # Evaluate scalar field
+        # It dynamically checks if the model contains block-wise faulted grids 
+        # or continuous stratigraphic grids.
         if hasattr(self, 'compute_faulted_grid'):
             scalar_field, results = self.compute_faulted_grid(full_grid_hyp)
         else:
             scalar_field, results = self.Solution_grid(grid_coord=full_grid_hyp, section_plot=True, recompute_weights=False)
         
+        # Extract spatial points and their computed lithological IDs
         points = final_grid.numpy()
         values = torch.round(results['Regular']).numpy()
         
+        # --- PYVISTA MESH INITIALIZATION ---
+        # Create an unstructured point cloud mesh and assign lithology scalars
         mesh = pv.PolyData(points)
         mesh["Lithology"] = values
         
         plotter = pv.Plotter(window_size=[1024, 768])
 
-        # Initialize vol_grid FIRST before checking faults
+        # Construct a 3D structured grid (volumetric block) to hold the scalar fields.
+        # This grid is required for generating isosurfaces(faults, etc).
         nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
         vol_grid = pv.StructuredGrid()
         vol_grid.points = points
         vol_grid.dimensions = [nx, ny, nz] 
         vol_grid["Lithology"] = values
+        
 
         if only_surface_mode is False:
-            plotter.add_mesh(mesh, scalars="Lithology", cmap="seismic", 
+            plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
                              point_size=5, render_points_as_spheres=True, opacity=0.5,
                              show_scalar_bar=False, label="Geological Grid")
             
-        #### For Fault plane(3D) plotting
-        # Keep track of fault actors so we can delete them when the slider updates
+        # --- FAULT PLANE PLOTTING ---
+        # Dictionary to track PyVista actors for fault planes, allowing them 
+        # to be dynamically removed and redrawn when the time slider moves.
         self.fault_actors = {}
 
         def add_pyvista_fault(v_grid, plt_obj, fault_z_tensor, thresh, name="Fault Plane"):
+            """
+            Helper function to extract and plot a 3D fault plane
+            """
             array_name = f"Fault_Field_{name}"
             v_grid[array_name] = fault_z_tensor.detach().cpu().numpy().flatten(order="F")
             
@@ -1173,24 +977,26 @@ class Gempy(grid):
                 thresh = thresh.item()
             
             try:
+                # Extract the 3D surface where the scalar field equals the fault threshold
                 fault_surface = v_grid.contour(isosurfaces=[thresh], scalars=array_name)
                 if fault_surface.n_points > 0:
-                    # Draw it and save the actor
-                    actor = plt_obj.add_mesh(fault_surface, color="yellow", opacity=0.5, label=name)
+                    actor = plt_obj.add_mesh(fault_surface, color="red", opacity=0.9, label=name)
                     self.fault_actors[name] = actor
             except Exception as e:
-                pass # Silently skip if fault doesn't intersect grid
+                # Pass silently if the fault plane is eroded or outside the grid bounds at this time step
+                pass 
 
+        # Evaluate and map faults (Handles both multiple and single fault models dynamically)
         # For multiple faults
         if hasattr(self, 'current_fault_z_dict'):
             for f_name, f_z in self.current_fault_z_dict.items():
                 add_pyvista_fault(vol_grid, plotter, f_z, self.fault_thresholds[f_name], name=f_name)
-        # For single faults
+        # For single fault
         elif hasattr(self, 'current_fault_z'):
             add_pyvista_fault(vol_grid, plotter, self.current_fault_z, getattr(self, 'fault_threshold', 0.0), name="Fault Plane")
-        ####
 
-        # LEGEND AND AXES
+
+        # --- LEGEND AND AXES ---
         label_map = {1: "Basement"}
         i = 1
         for key in self.sp_coord.keys():
@@ -1203,24 +1009,34 @@ class Gempy(grid):
 
         legend_entries = []
         for val in range(1, max_possible_val + 1):
+
+             
              color = cmap(norm(val))
              name = label_map.get(val, f"Layer {val}")
+
+             # Exclude structural "fault" names from the stratigraphy legend
+             # we can modify this according to oour naming of fault planes
+             if "fault" in str(name).lower():
+                 continue 
+                 
              legend_entries.append((name, color))
              
         plotter.add_legend(legend_entries, loc='lower right')
         plotter.add_axes()
         plotter.show_grid()
 
-        # GEOLOGICAL INTERFACES
+        # --- GEOLOGICAL INTERFACES ---
         max_layer_val = values.max()
         contour_levels = [i + 0.5 for i in range(1, int(max_layer_val) + 1)]
         interfaces = vol_grid.contour(isosurfaces=contour_levels)
         interface_actor = plotter.add_mesh(interfaces, color="white", opacity=0.7, label="Interface")
 
-        # INPUT DATA
+        # --- INPUT DATA VISUALIZATION ---
         if plot_input_data:
             input_colours = ["red", "blue", "green"]
             i = 0
+
+            # Plot interface points
             for key, coords in self.sp_coord.items():
                 valid_coords = coords[:,[0,1,2]].numpy() if coords.shape[1] > 3 else coords.numpy()
                 c = input_colours[i % len(input_colours)]
@@ -1228,24 +1044,32 @@ class Gempy(grid):
                                    render_points_as_spheres=True, label=f"Input: {key}")
                 i += 1
 
+            # Plot orientation gradients
             if hasattr(self, 'Position_G') and hasattr(self, 'Value_G'):
                 pos_g = self.Position_G[:, [0, 1, 2]].numpy() if self.Position_G.shape[1] > 3 else self.Position_G.numpy()
                 vec_g = self.Value_G[:, [0, 1, 2]].numpy() if self.Value_G.shape[1] > 3 else self.Value_G.numpy()
                 
+                # Render gradients as 3D vector arrows indicating geological dip
                 arrows = pv.PolyData(pos_g)
                 arrows["vectors"] = vec_g
                 arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.1)
                 plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
 
 
-        ###### Callback for time slider #######
+        # --- Callback for time slider --- #
         def on_slider_change(t_value):
+            """
+            Callback function executed whenever the time slider is adjusted.
+            It recalculates the model geometry for the new time step and rapidly updates 
+            the plot
+            """
             nonlocal interface_actor 
 
+            
             new_section = {slider_dim: t_value}
             new_full_grid, _ = self.get_section_grid(new_section)
             
-            # --- USE FAULT SOLVER IF AVAILABLE ---
+            # Recompute the geological scalar fields for the new structural geometry at time = 't_value'
             if hasattr(self, 'compute_faulted_grid'):
                 _, new_result = self.compute_faulted_grid(new_full_grid)
             else:
@@ -1254,6 +1078,7 @@ class Gempy(grid):
             new_values = torch.round(new_result['Regular']).numpy()
             mesh["Lithology"] = new_values
 
+            # Dynamically update the visual mesh lithology arrays
             vol_grid.points = final_grid.numpy() 
             vol_grid["Lithology"] = new_values   
             new_interfaces = vol_grid.contour(isosurfaces=contour_levels)
@@ -1264,68 +1089,108 @@ class Gempy(grid):
                 plotter.remove_actor(actor)
             self.fault_actors.clear()
 
-            # 2. Draw new fault planes using the updated current_fault_z variables
+            # 2. Draw new fault planes for the current time step
             if hasattr(self, 'current_fault_z_dict'):
                 for f_name, f_z in self.current_fault_z_dict.items():
                     add_pyvista_fault(vol_grid, plotter, f_z, self.fault_thresholds[f_name], name=f_name)
             elif hasattr(self, 'current_fault_z'):
                 add_pyvista_fault(vol_grid, plotter, self.current_fault_z, getattr(self, 'fault_threshold', 0.0), name="Fault Plane")
-            # ----------------------------
-
+            
+            # Replace the old interface boundaries with the newly shifted ones
             plotter.remove_actor(interface_actor)
             if new_interfaces.n_points > 0:
                 interface_actor = plotter.add_mesh(new_interfaces, color="white", opacity=0.7)
 
             return
 
-        # Add Slider
+        # Adding time slider
         plotter.add_slider_widget(on_slider_change, [t_min, t_max], 
-                                  title=f"T Evolution",
+                                  title=f"time evolution",
                                   pointa=(0.65, 0.90),
                                   pointb=(0.95, 0.90),
                                   color="black")
         
         print(f"Opening Interactive Plot. Use the slider to change T dimension...")
+        bounds = vol_grid.bounds
+        plotter.show_grid(bounds=bounds)
         plotter.show()
+
 
 def main():        
     
+    ##### Random example of flattening of a single fold
+
     Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.05],dtype=torch.float32))
 
-    gp = Gempy("Strata_model", 
-               extent = [-0.1, 1.1, 0.1, 0.9, 0.1, 0.90, 0, 5],
-               resolution = [100, 50, 50, 2]
+    gp = Gempy("Gempy_test", 
+               extent=[-0.4,1.2,-0.4,1.2,-0.4,1.2, 0,5],
+                resolution=[50, 50, 50, 2]
                )
-    
-   # Testing with 2 interface points and single orientation point
 
-    interface_data = {
-    'rock1': torch.tensor([
-        [500.0, 500.0, 500.0, 0.0],
-        [600.0, 600.0, 500.0, 0.0]
+
+    interface_data={"Rock 1": torch.tensor([
+        [0.0, 100.0, 200.0, 0.0],
+        [0.0, 500.0, 200.0, 0.0],
+        [0.0, 900.0, 200.0, 0.0],
+        [400.0, 100.0, 600.0, 0.0],
+        [400.0, 500.0, 600.0, 0.0],
+        [400.0, 900.0, 600.0, 0.0],
+        [200.0, 100.0, 400.0, 0.0],
+        [200.0, 500.0, 400.0, 0.0],
+        [200.0, 900.0, 400.0, 0.0],
+        [800.0, 100.0, 400.0, 0.0],
+        [800.0, 500.0, 400.0, 0.0],
+        [800.0, 900.0, 400.0, 0.0],
+        [600.0, 100.0, 600.0, 0.0],
+        [600.0, 500.0, 600.0, 0.0],
+        [600.0, 900.0, 600.0, 0.0],
+        [1000.0, 100.0, 200.0, 0.0],
+        [1000.0, 500.0, 200.0, 0.0],
+        [1000.0, 900.0, 200.0, 0.0]
+    ])/1000}
+
+
+    orientation_data ={"Positions": torch.tensor([
+        [500.0, 500.0, 620.0, 0], # Fold Hinge 
         
-        ])/1000
+        [300.0, 500.0, 500.0, 0],
+        [700.0, 500.0, 500.0, 0], 
+
+        [200.0, 500.0, 400.0, 0], 
+        [800.0, 500.0, 400.0, 0],
+
+        [100.0, 500.0, 300.0, 0], 
+        [900.0, 500.0, 300.0, 0],
+
+        [0.0, 500.0, 200.0, 0],   # Edge
+        [1000.0, 500.0, 200.0, 0]
+
+    ]) / 1000, 
     
-}
-
-    orientation_data = {
-    'Positions': torch.tensor([
-       [500.0, 500.0, 500.0, 0]  
-    ]) / 1000,
-
-        "Values": torch.tensor([
-        [0.0, 0.000, 1, 0.0]
-    ])
-}
+    "Values": torch.tensor([
+        [0.0, 0.0, 1.0, 0.30],       
+        
+        [-0.866, 0.0, 0.5, 0.25],    
+        [ 0.866, 0.0, 0.5, 0.25],    
+        
+        [-0.707, 0.0, 0.707, 0.20],  
+        [ 0.707, 0.0, 0.707, 0.20], 
+        
+        [-0.5, 0.0, 0.866, 0.15],    
+        [ 0.5, 0.0, 0.866, 0.15],   
+        
+        [-0.174, 0.0, 0.985, 0.10],  
+        [ 0.174, 0.0, 0.985, 0.10]   
+    ])}
 
 
     gp.interface_data(interface_data)
     gp.orientation_data(orientation_data)
     gp.interpolation_options()
     gp.interpolation_options_set(Transformation_matrix=Transformation_matrix)
-    # custom_data = torch.tensor([[40,20,30,0]], dtype=torch.float32)
+    custom_data = torch.tensor([[4,2,3]], dtype=torch.float32)
 
-    # gp.activate_custom_grid(custom_grid_data=custom_data)
+    gp.activate_custom_grid(custom_grid_data=custom_data)
     #gp.active_grid()
     #gp.deactivate_grid("Regular")
     sol = gp.Solution()
@@ -1336,15 +1201,17 @@ def main():
     gp.active_grid()
     sol = gp.Solution()
 
+    # print(sol['scalar_field'], sol['result'])
+
     #########################################################################
     ###### Uncomment the below code lines for matplotlib visualization ######
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
@@ -1364,8 +1231,8 @@ def main():
     ###############################################################
 
     # print("\nStarting Interactive Visualization...")
-    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
+    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
-    
+
 if __name__ == "__main__":
     main()
