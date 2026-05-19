@@ -233,6 +233,11 @@ class GempyFaultModel(Gempy):
             fault_out, _ = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
             fault_scalars = fault_out["Regular"]
 
+            #### For Fault-plane(3D) and Fault-line(2D) plotting
+            # Save the fault scalar field for plotting
+            self.current_fault_z = fault_scalars.clone()
+            ####
+
             hw_mask = fault_scalars > self.fault_threshold
             
             # For storing values
@@ -253,23 +258,13 @@ class GempyFaultModel(Gempy):
                 # Calculating scalar field on whole grid using foot wall model weights
                 struct_out_fw, struct_res_fw = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
 
-            ###########
-            #### SCALAR FIELD NORMALIZATION (Aligning the two blocks)
-        
-            if struct_out_hw is not None and struct_out_fw is not None:
-                # Calculating average scalar value of the geological interfaces in both blocks
-                hw_ref_mean = torch.mean(struct_out_hw['scalar_ref_points'])
-                fw_ref_mean = torch.mean(struct_out_fw['scalar_ref_points'])
-                
-                # Calculate the difference between their averages
-                scalar_shift = hw_ref_mean - fw_ref_mean
-                
-                # Apply this shift to the entire Footwall scalar field and its reference points
-                struct_out_fw['Regular'] = struct_out_fw['Regular'] + scalar_shift
-                struct_out_fw['scalar_ref_points'] = struct_out_fw['scalar_ref_points'] + scalar_shift
-                
-                # print(f"Normalizing Footwall by shifting scalar field by: {scalar_shift.item()}")
-                
+            #### For plotting separate(original) scalar fields for each block
+            # Save the raw scalar fields and mask for plotting
+            self.raw_hw_scalar = struct_out_hw["Regular"].clone()
+            self.raw_fw_scalar = struct_out_fw["Regular"].clone()
+            self.raw_hw_mask = hw_mask.clone()
+            ####
+           
             # IMPORTANT: Stitch Outputs based on Fault Mask
             final_out = {}
             final_res = {}
@@ -277,6 +272,7 @@ class GempyFaultModel(Gempy):
             if struct_out_hw is not None and struct_out_fw is not None:
                 for k in struct_out_hw.keys():
                     if k == 'scalar_ref_points':
+
                         # Reference points used for assigning contour colors
                         final_out[k] = struct_out_hw[k]
                     else:
@@ -285,6 +281,7 @@ class GempyFaultModel(Gempy):
                         
                 for k in struct_res_hw.keys():
                     if k == 'ref_points':
+
                         final_res[k] = struct_res_hw[k]
                     else:
                         final_res[k] = torch.where(hw_mask, struct_res_hw[k], struct_res_fw[k])
@@ -310,22 +307,23 @@ class GempyFaultModel(Gempy):
         # print("New function")
         return self.compute_faulted_grid(grid_coord)
 
-    
 
 if __name__ == "__main__":
 
     # Define Gempy model paremters like extent resolution
-    extent = [-0.1, 1.5,-0.1, 1.5, -0.1, 1.5, 0, 10]
-    resolution = [100, 50, 50, 2]
+    extent = [-0.1, 1.2,-0.1, 1.2, 0.0, 1.0, 0, 10]
+    resolution = [70, 70, 70, 2]
 
     model = GempyFaultModel("Inclined horizon, 2 Block Model Test", extent, resolution)
     
     # 1. FAULT Data
     fault_interface_data = {
     'fault': torch.tensor([
-       [400.0, 200.0, 800.0, 0.0],
-        [400.0, 500.0, 800.0, 0.0],
-        [400.0, 800.0, 800.0, 0.0],
+
+      # Top edge of the fault (Corrected to X=425)
+        [425.0, 200.0, 800.0, 0.0],
+        [425.0, 500.0, 800.0, 0.0],
+        [425.0, 800.0, 800.0, 0.0],
         
         # Middle of the fault
         [500.0, 200.0, 500.0, 0.0],
@@ -353,38 +351,46 @@ if __name__ == "__main__":
         [500.0, 500.0, 100.0, 5000.0],
         [500.0, 800.0, 100.0, 5000.0],
 
-        # Keeping the fault as a straight vertical plane at T = 10.0
+        # # Keeping the fault as a straight vertical plane at T = 10.0
         [500.0, 200.0, 800.0, 10000.0],
         [500.0, 500.0, 800.0, 10000.0],
         [500.0, 800.0, 800.0, 10000.0],
         
+        # Middle of the fault
         [500.0, 200.0, 500.0, 10000.0],
         [500.0, 500.0, 500.0, 10000.0],
         [500.0, 800.0, 500.0, 10000.0],
         
+        # Bottom edge of the fault 
         [500.0, 200.0, 100.0, 10000.0],
         [500.0, 500.0, 100.0, 10000.0],
         [500.0, 800.0, 100.0, 10000.0],
+
         
         ])/1000
     }
     fault_orientation_data = {
-        'Positions': torch.tensor([ [500.0, 500.0, 500.0, 0.0],
+        'Positions': torch.tensor([ 
+            
+                            [500.0, 500.0, 800.0, 0.0],
                             [500.0, 200.0, 500.0, 0.0],
-                            [500.0, 800.0, 500.0, 0.0],
+                            [500.0, 800.0, 200.0, 0.0],
 
                             # Positions at T =5.0
-                            [500.0, 800.0, 800.0, 5000.0],
-                            [500.0, 800.0, 100.0, 5000.0],
+                            [500.0, 500.0, 800.0, 5000.0],
+                            [500.0, 200.0, 500.0, 5000.0],
+                            [500.0, 800.0, 200.0, 5000.0],
 
-                            # Positions at T =10.0
-                            [500.0, 800.0, 800.0, 10000.0],
-                            [500.0, 800.0, 100.0, 10000.0]
+                            # # Positions at T =10.0
+                            [500.0, 500.0, 800.0, 10000.0],
+                            [500.0, 200.0, 500.0, 10000.0],
+                            [500.0, 800.0, 200.0, 10000.0]
 
         
                                    ]) / 1000,
 
-        "Values": torch.tensor([[0.970, 0.000, 0.242, 0.0],
+        "Values": torch.tensor([
+                                [0.970, 0.000, 0.242, 0.0],
                                 [0.970, 0.000, 0.242, 0.0],
                                  [0.970, 0.000, 0.242, 0.0],
                                 
@@ -392,11 +398,15 @@ if __name__ == "__main__":
 
                                  [1.0, 0.000, 0.0, 0],
                                  [1.0, 0.000, 0.0,  0],
+                                 [1.0, 0.000, 0.0,  0],
 
-                                # At T =10.0
+
+                                # # At T =10.0
 
                                 [1.0, 0.000, 0.0, 0],
-                                [1.0, 0.000, 0.0, 0]
+                                [1.0, 0.000, 0.0, 0],
+                                [1.0, 0.000, 0.0, 0],
+
                 
                                 ])
     }
@@ -410,57 +420,69 @@ if __name__ == "__main__":
     # 2. STRUCTURE Data
     
     struct_interface_data =  {
-        "rock1": torch.tensor([
+        "Rock 1": torch.tensor([
             # Left Block 
-            [100.0, 200.0, 110.0, 0.0], [100.0, 800.0, 110.0, 0.0], [300.0, 500.0, 270.0, 0.0],
+            [100.0, 200.0, 110.0, 0.0], [100.0, 800.0, 110.0, 0.0], 
+            [300.0, 500.0, 270.0, 0.0],
             [400.0, 200.0, 350.0, 0.0], [400.0, 800.0, 350.0, 0.0],
             
             # --- Right Block (X > 500) 
-            [600.0, 200.0, 260.0, 0.0], [600.0, 800.0, 260.0, 0.0], [800.0, 500.0, 420.0, 0.0],
+            [650.0, 200.0, 260.0, 0.0], [650.0, 800.0, 260.0, 0.0], 
+            [800.0, 500.0, 420.0, 0.0],
             [1000.0, 200.0, 580.0, 0.0], [1000.0, 800.0, 580.0, 0.0],
 
             ### At T = 5.0 -- layer will be rotated clockwise and restored to horizontal
             #  Flattened Left Block 
-            [100.0, 200.0, 180.0, 5000.0], [100.0, 800.0, 180.0, 5000.0], [300.0, 500.0, 180.0, 5000.0],
+            [100.0, 200.0, 180.0, 5000.0], [100.0, 800.0, 180.0, 5000.0], 
+            [300.0, 500.0, 180.0, 5000.0],
             [450.0, 200.0, 180.0, 5000.0], [450.0, 800.0, 180.0, 5000.0],
 
             # Flattened Right Block (X > 500) 
-            [670.0, 200.0, 380.0, 5000.0], [670.0, 800.0, 380.0, 5000.0], [850.0, 500.0, 380.0, 5000.0],
+            [670.0, 200.0, 380.0, 5000.0], [670.0, 800.0, 380.0, 5000.0], 
+            [850.0, 500.0, 380.0, 5000.0],
             [1050.0, 200.0, 380.0, 5000.0], [1050.0, 800.0, 380.0, 5000.0],
 
-            ### At T = 10.0 -- left block should move up and match right block
-            [100.0, 200.0, 380.0, 10000.0], [100.0, 800.0, 380.0, 10000.0], [300.0, 500.0, 380.0, 10000.0],
+            # ### At T = 10.0 -- left block should move up and match right block
+            [100.0, 200.0, 380.0, 10000.0], [100.0, 800.0, 380.0, 10000.0], 
+            [300.0, 500.0, 380.0, 10000.0],
             [450.0, 200.0, 380.0, 10000.0], [450.0, 800.0, 380.0, 10000.0],
 
             # --- Right Block (X > 500)
-            [670.0, 200.0, 380.0, 10000.0], [670.0, 800.0, 380.0, 10000.0], [850.0, 500.0, 380.0, 10000.0],
+            [670.0, 200.0, 380.0, 10000.0], [670.0, 800.0, 380.0, 10000.0], 
+            [850.0, 500.0, 380.0, 10000.0],
             [1050.0, 200.0, 380.0, 10000.0], [1050.0, 800.0, 380.0, 10000.0],
 
 
         ]) / 1000,
 
-        "rock2": torch.tensor([
-            #  Left Block (X < 450)
-            [100.0, 200.0, 310.0, 0.0], [100.0, 800.0, 310.0, 0.0], [300.0, 500.0, 470.0, 0.0],
+        "Rock 2": torch.tensor([
+            # #  Left Block (X < 450)
+            [100.0, 200.0, 310.0, 0.0], [100.0, 800.0, 310.0, 0.0], 
+            [300.0, 500.0, 470.0, 0.0],
             [400.0, 200.0, 550.0, 0.0], [400.0, 800.0, 550.0, 0.0],
             
             #  Right Block (X > 500) 
-            [600.0, 200.0, 460.0, 0.0], [600.0, 800.0, 460.0, 0.0], [800.0, 500.0, 620.0, 0.0],
+            [650.0, 200.0, 460.0, 0.0], [650.0, 800.0, 460.0, 0.0], 
+            [800.0, 500.0, 620.0, 0.0],
             [1000.0, 200.0, 780.0, 0.0], [1000.0, 800.0, 780.0, 0.0],
 
-            ### At T = 5.0 -- layer will be rotated clockwise and restored to horizontal
-            #  Flattened Left Block 
-            [150.0, 200.0, 380.0, 5000.0], [150.0, 800.0, 380.0, 5000.0], [350.0, 500.0, 380.0, 5000.0],
+            ## At T = 5.0 -- layer will be rotated clockwise and restored to horizontal
+            # #  Flattened Left Block 
+            [150.0, 200.0, 380.0, 5000.0], [150.0, 800.0, 380.0, 5000.0], 
+            [350.0, 500.0, 380.0, 5000.0],
             [450.0, 200.0, 380.0, 5000.0], [450.0, 800.0, 380.0, 5000.0],
              # Flattened Right Block (X > 500)
-            [625.0, 200.0, 580.0, 5000.0], [625.0, 800.0, 580.0, 5000.0], [800.0, 500.0, 580.0, 5000.0],
+            [625.0, 200.0, 580.0, 5000.0], [625.0, 800.0, 580.0, 5000.0], 
+            [800.0, 500.0, 580.0, 5000.0],
             [1100.0, 200.0, 580.0, 5000.0], [1100.0, 800.0, 580.0, 5000.0],
 
-             ### At T = 10.0 -- left block should move up and match right block
-             [150.0, 200.0, 580.0, 10000.0], [150.0, 800.0, 580.0, 10000.0], [350.0, 500.0, 580.0, 10000.0],
+            #  ### At T = 10.0 -- left block should move up and match right block
+             [150.0, 200.0, 580.0, 10000.0], [150.0, 800.0, 580.0, 10000.0], 
+             [350.0, 500.0, 580.0, 10000.0],
             [450.0, 200.0, 580.0, 10000.0], [450.0, 800.0, 580.0, 10000.0],
 
-            [625.0, 200.0, 580.0, 10000.0], [625.0, 800.0, 580.0, 10000.0], [800.0, 500.0, 580.0, 10000.0],
+            [625.0, 200.0, 580.0, 10000.0], [625.0, 800.0, 580.0, 10000.0], 
+            [800.0, 500.0, 580.0, 10000.0],
             [1100.0, 200.0, 580.0, 10000.0], [1100.0, 800.0, 580.0, 10000.0],
 
 
@@ -474,15 +496,15 @@ if __name__ == "__main__":
         # Left Block 
         [250.0, 500.0, 330.0, 0.0],
         [0.0, 500.0, 330.0, 0.0],     
-        [400.0, 500.0, 330.0, 0.0],    
+        [400.0, 500.0, 250.0, 0.0],    
         
         # Right Block 
-        [850.0, 500.0, 560.0, 0.0],
-        [700.0, 500.0, 560.0, 0.0],    
-        [1200.0, 500.0, 560.0, 0.0],   
+        [850.0, 500.0, 550.0, 0.0],
+        [700.0, 500.0, 590.0, 0.0],    
+        [1000.0, 500.0, 500.0, 0.0],   
 
-        # --- Flattened T=5 Orientations ---
-        # Left Block flattened
+        # # --- Flattened T=5 Orientations ---
+        # # Left Block flattened
         [250.0, 500.0, 350.0, 5000.0],
         [0.0, 500.0, 350.0, 5000.0],
         [400.0, 500.0, 350.0, 5000.0],
@@ -492,9 +514,9 @@ if __name__ == "__main__":
         [700.0, 500.0, 520.0, 5000.0],
         [1200.0, 500.0, 520.0, 5000.0],
 
-        # --- Flattened T=10 Orientations ---
+        # # --- Flattened T=10 Orientations ---
 
-        # Left block
+        # # Left block
         [250.0, 500.0, 500.0, 10000.0],
         [0.0, 500.0, 500.0, 10000.0],
         [400.0, 500.0, 500.0, 10000.0],
@@ -518,7 +540,7 @@ if __name__ == "__main__":
         [-0.625, 0.000, 0.781, 0.0], 
         [-0.625, 0.000, 0.781,  0.0], 
 
-        # --- Gradients at T=5.0 (Flat) ---
+        # # --- Gradients at T=5.0 (Flat) ---
         # Left Block
         [0.000, 0.000, 1.000, 0.0],   
         [0.000, 0.000, 1.000, 0.0],
@@ -529,8 +551,8 @@ if __name__ == "__main__":
         [0.000, 0.000, 1.000, 0.0],
         [0.000, 0.000, 1.000, 0.0],
 
-        ## At T = 10.0
-        # Left Block
+        # ## At T = 10.0
+        # # Left Block
         [0.000, 0.000, 1.000, 0.0],   
         [0.000, 0.000, 1.000, 0.0],
         [0.000, 0.000, 1.000, 0.0],
@@ -559,19 +581,19 @@ if __name__ == "__main__":
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    # import time
-    # for t in [ 0, 1.0, 2.0, 3,  4,4.5, 5, 6, 7 ,8, 9, 10]:
-    #     print(f"Time:{t}")
-    #     model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-    #     time.sleep(1)
-
-
-    ##### FOR 3D matplotlib #####
     import time
     for t in [ 0, 1.0, 2.0, 3,  4,4.5, 5, 6, 7 ,8, 9, 10]:
         print(f"Time:{t}")
-        model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+        model.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=False)
         time.sleep(1)
+
+
+    ##### FOR 3D matplotlib #####
+    # import time
+    # for t in [ 0, 1.0, 2.0, 3,  4,4.5, 5, 6, 7 ,8, 9, 10]:
+    #     print(f"Time:{t}")
+    #     model.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     #############################################################################################
@@ -586,4 +608,4 @@ if __name__ == "__main__":
     # 
 
     # --- PLOTTING ---
-    model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
+    # model.plot_interactive_section(plot_input_data=True, only_surface_mode= False)
