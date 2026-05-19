@@ -1001,348 +1001,399 @@ class Gempy(grid):
 
    
     ##### ---
-    def plot_interactive_section(self, plot_input_data=True, only_surface_mode = False):
+    def plot_interactive_section(self, plot_input_data=True, only_surface_mode=False):
         """
-        Creates an interactive 3D PyVista plot with a time slider 
-        'Args:
-        plot_input_data: if you want to view the interface points and gradient vectors - set it to True
-         
-        only_surface_mode: if you want to view only the contoured surface with the input points, no point cloud - set it to True
+        Creates an interactive 3D PyVista plot equipped with a time slider to visualize 
+        the kinematic evolution of the geological model. 
         
+        Parameters:
+        -----------
+        plot_input_data : bool
+            If True, visualizes the input structural data (surface points and orientation gradients).
+        only_surface_mode : bool
+            If True, hides the volumetric geological grid and only displays structural surfaces 
+            (faults and layer interfaces).
         """
+
+        # Verify if the PyVista library is installed in the environment
         if not PYVISTA_AVAILABLE:
             print("PyVista is required for interactive plotting.")
             return
 
+        # Define the temporal dimension (4th dimension: x, y, z, t)
         slider_dim=4
-        # Setup range for the slider dimension
-        # Convert 1-based index to 0-based
         idx = slider_dim - 1
-        t_min = self.extent[2*idx]   # taking t value directly from model extent definition
+
+        # Extract the temporal bounds from the model's extent array
+        t_min = self.extent[2*idx]   
         t_max = self.extent[2*idx + 1]
         
-        # Initial Plot at min value
+        # Initialize the state at the earliest time step
         current_t = t_min
         current_section = {slider_dim : current_t}
         
-        # Generates the grid points for the initial frame
+        # Generate current section grid
         full_grid_hyp, final_grid = self.get_section_grid(current_section)
         
-        ##Pre-compute weights if missing ##
-        # This ensures the slider is fast because we don't invert the matrix every frame
+        # If universal co-kriging hasn't been solved yet, compute for kriging weights
         if not hasattr(self, 'w'):
             self.Ge_model() 
 
-        # Compute initial solution
-        scalar_field, results = self.Solution_grid(grid_coord=full_grid_hyp, section_plot=True, recompute_weights=False)
+        # Evaluate scalar field
+        # It dynamically checks if the model contains block-wise faulted grids 
+        # or continuous stratigraphic grids.
+        if hasattr(self, 'compute_faulted_grid'):
+            scalar_field, results = self.compute_faulted_grid(full_grid_hyp)
+        else:
+            scalar_field, results = self.Solution_grid(grid_coord=full_grid_hyp, section_plot=True, recompute_weights=False)
         
-        # print(scalar_field, results)
-
-        # Determines location - grid points
+        # Extract spatial points and their computed lithological IDs
         points = final_grid.numpy()
-
-        # Determines colour
-        # Rounds float results to integers (Rock IDs)
         values = torch.round(results['Regular']).numpy()
         
-        # Create PyVista Mesh - point cloud
+        # --- PYVISTA MESH INITIALIZATION ---
+        # Create an unstructured point cloud mesh and assign lithology scalars
         mesh = pv.PolyData(points)
-        # attaching rock id to mesh
         mesh["Lithology"] = values
         
-        # Visualization window
         plotter = pv.Plotter(window_size=[1024, 768])
 
+        # Construct a 3D structured grid (volumetric block) to hold the scalar fields.
+        # This grid is required for generating isosurfaces(faults, etc).
+        nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
+        vol_grid = pv.StructuredGrid()
+        vol_grid.points = points
+        vol_grid.dimensions = [nx, ny, nz] 
+        vol_grid["Lithology"] = values
+        
 
         if only_surface_mode is False:
+            plotter.add_mesh(mesh, scalars="Lithology", cmap="viridis", 
+                             point_size=5, render_points_as_spheres=True, opacity=0.5,
+                             show_scalar_bar=False, label="Geological Grid")
+            
+        # --- FAULT PLANE PLOTTING ---
+        # Dictionary to track PyVista actors for fault planes, allowing them 
+        # to be dynamically removed and redrawn when the time slider moves.
+        self.fault_actors = {}
 
-            plotter.add_mesh(mesh, scalars="Lithology", cmap="seismic", 
-                         point_size=5, render_points_as_spheres=True, opacity=0.5,
-                         show_scalar_bar=False,label="Geological Grid")
+        def add_pyvista_fault(v_grid, plt_obj, fault_z_tensor, thresh, name="Fault Plane"):
+            """
+            Helper function to extract and plot a 3D fault plane
+            """
+            array_name = f"Fault_Field_{name}"
+            v_grid[array_name] = fault_z_tensor.detach().cpu().numpy().flatten(order="F")
+            
+            if isinstance(thresh, torch.Tensor):
+                thresh = thresh.item()
+            
+            try:
+                # Extract the 3D surface where the scalar field equals the fault threshold
+                fault_surface = v_grid.contour(isosurfaces=[thresh], scalars=array_name)
+                if fault_surface.n_points > 0:
+                    actor = plt_obj.add_mesh(fault_surface, color="red", opacity=0.9, label=name)
+                    self.fault_actors[name] = actor
+            except Exception as e:
+                # Pass silently if the fault plane is eroded or outside the grid bounds at this time step
+                pass 
 
-        # #########################
-        # ADDING LEGEND 
-        # ########################
+        # Evaluate and map faults (Handles both multiple and single fault models dynamically)
+        # For multiple faults
+        if hasattr(self, 'current_fault_z_dict'):
+            for f_name, f_z in self.current_fault_z_dict.items():
+                add_pyvista_fault(vol_grid, plotter, f_z, self.fault_thresholds[f_name], name=f_name)
+        # For single fault
+        elif hasattr(self, 'current_fault_z'):
+            add_pyvista_fault(vol_grid, plotter, self.current_fault_z, getattr(self, 'fault_threshold', 0.0), name="Fault Plane")
+
+
+        # --- LEGEND AND AXES ---
         label_map = {1: "Basement"}
         i = 1
         for key in self.sp_coord.keys():
             label_map[i+1] = key
             i += 1
             
-        cmap = plt.get_cmap("seismic")
-        
-        # Number of rock types = Basement + defined layers
+        cmap = plt.get_cmap("viridis")
         max_possible_val = 1 + len(self.sp_coord)
-        # Creates a scaling function. It maps IDs (1 to 2) to the color range (0.0 to 1.0).
         norm = plt.Normalize(vmin=1, vmax=max_possible_val)
-        
 
-        # Actual pair list (Name, Colour) for legend box
         legend_entries = []
-        # Add all possible layers to legend, not just currently visible ones, so legend is stable
         for val in range(1, max_possible_val + 1):
+
+             
              color = cmap(norm(val))
              name = label_map.get(val, f"Layer {val}")
+
+             # Exclude structural "fault" names from the stratigraphy legend
+             # we can modify this according to oour naming of fault planes
+             if "fault" in str(name).lower():
+                 continue 
+                 
              legend_entries.append((name, color))
              
-        plotter.add_legend(legend_entries, loc = 'lower right')
-
-
-        # Add XYZ coordinate arrows 
+        plotter.add_legend(legend_entries, loc='lower right')
         plotter.add_axes()
-
-        # Show X,Y,Z extent on the grid box
         plotter.show_grid()
 
-
-        ####################################################################
-        ################ For Contouring the interface ######################
-        ####################################################################
-
-
-        # using pyvista structure grid - to get connected gird
-
-        # Grid dimensions from resolution of Gempy model
-        nx, ny, nz = self.resolution[0], self.resolution[1], self.resolution[2]
-        
-        vol_grid = pv.StructuredGrid()
-        vol_grid.points = points
-        vol_grid.dimensions = [nx, ny, nz] 
-
-        # Assign the rock IDs to the every point in volume
-        vol_grid["Lithology"] = values
-
-
-        # Generate Initial Contours
-        # Taking surfaces at 1.5, 2.5, etc. (The boundary between ID 1 and 2)
+        # --- GEOLOGICAL INTERFACES ---
         max_layer_val = values.max()
         contour_levels = [i + 0.5 for i in range(1, int(max_layer_val) + 1)]
-        #####  contour_levels = [1.5, 2.5, 3.5, ......]
-
-        # Calculating contour surface between two rocks 
-        # interfaces is the new mesh object
         interfaces = vol_grid.contour(isosurfaces=contour_levels)
-
-        # Adding contours to the plotter
         interface_actor = plotter.add_mesh(interfaces, color="white", opacity=0.7, label="Interface")
 
-        ##########################################################################
-                        # PLOTTING INPUT DATA #
-        ##########################################################################
-
+        # --- INPUT DATA VISUALIZATION ---
         if plot_input_data:
             input_colours = ["red", "blue", "green"]
-
             i = 0
-            for _, coords in self.sp_coord.items():
-                if coords.shape[1] > 3:
-                     # Remove 4th dimension (Time) for plotting location
-                    valid_coords = coords[:,[0,1,2]].numpy()
-                else:
-                    valid_coords = coords.numpy()
 
+            # Plot interface points
+            for key, coords in self.sp_coord.items():
+                valid_coords = coords[:,[0,1,2]].numpy() if coords.shape[1] > 3 else coords.numpy()
                 c = input_colours[i % len(input_colours)]
-                
                 plotter.add_points(valid_coords, color=c, point_size=12, 
                                    render_points_as_spheres=True, label=f"Input: {key}")
                 i += 1
 
-            ######## ADDING GRADIENT ARROWS #########
-
+            # Plot orientation gradients
             if hasattr(self, 'Position_G') and hasattr(self, 'Value_G'):
-                # Extract XYZ for positions
                 pos_g = self.Position_G[:, [0, 1, 2]].numpy() if self.Position_G.shape[1] > 3 else self.Position_G.numpy()
-                
-                # Extract XYZ for vectors (ignoring Time component of the vector if it exists)
                 vec_g = self.Value_G[:, [0, 1, 2]].numpy() if self.Value_G.shape[1] > 3 else self.Value_G.numpy()
                 
-                # Create PyVista Arrow object
+                # Render gradients as 3D vector arrows indicating geological dip
                 arrows = pv.PolyData(pos_g)
                 arrows["vectors"] = vec_g
-                # "Glyph" filters scale geometry (arrows) at every point
                 arrow_glyph = arrows.glyph(orient="vectors", scale=False, factor=0.1)
-                
                 plotter.add_mesh(arrow_glyph, color="red", label="Gradients")
 
-    
 
-        ###### Callback for time slider #######
-
+        # --- Callback for time slider --- #
         def on_slider_change(t_value):
+            """
+            Callback function executed whenever the time slider is adjusted.
+            It recalculates the model geometry for the new time step and rapidly updates 
+            the plot
+            """
+            nonlocal interface_actor 
 
-            ''' Value is the new Time t.'''
-
-            # old contour variable
-            nonlocal interface_actor         #Allow updating the contour variable
-
-            # Update section
-            new_section = {slider_dim: t_value}
-            new_section[slider_dim] = t_value
             
-
-            # Recalculate Grid positions
-            # Regenerates grid points for the new t
+            new_section = {slider_dim: t_value}
             new_full_grid, _ = self.get_section_grid(new_section)
             
-            # Re-calculates lithology for new points and (Fast, weights are solved already)
-            _, new_result = self.Solution_grid(grid_coord=new_full_grid, section_plot=True, recompute_weights=False)
+            # Recompute the geological scalar fields for the new structural geometry at time = 't_value'
+            if hasattr(self, 'compute_faulted_grid'):
+                _, new_result = self.compute_faulted_grid(new_full_grid)
+            else:
+                _, new_result = self.Solution_grid(grid_coord=new_full_grid, section_plot=True, recompute_weights=False)
+            
             new_values = torch.round(new_result['Regular']).numpy()
-            
-            # Updates the colors on the existing mesh
-            mesh["Lithology"] = torch.round(new_result['Regular']).numpy()
+            mesh["Lithology"] = new_values
 
-
-            # ###Update Contours ###
-
-
-            # Update the volume grid data
+            # Dynamically update the visual mesh lithology arrays
             vol_grid.points = final_grid.numpy() 
-
-            #  Updates the grid with the new Rock IDs calculated for the new Time (t)
             vol_grid["Lithology"] = new_values   
-            
-            # Recalculate the new contour surface
             new_interfaces = vol_grid.contour(isosurfaces=contour_levels)
-            
-            # Swap the actor in the scene - removes the old contour surface as we change t
-            plotter.remove_actor(interface_actor)
 
-            # checks if there are boundaries to draw or not
+            # --- UPDATE FAULT PLANES ---
+            # 1. Remove old fault planes
+            for actor in self.fault_actors.values():
+                plotter.remove_actor(actor)
+            self.fault_actors.clear()
+
+            # 2. Draw new fault planes for the current time step
+            if hasattr(self, 'current_fault_z_dict'):
+                for f_name, f_z in self.current_fault_z_dict.items():
+                    add_pyvista_fault(vol_grid, plotter, f_z, self.fault_thresholds[f_name], name=f_name)
+            elif hasattr(self, 'current_fault_z'):
+                add_pyvista_fault(vol_grid, plotter, self.current_fault_z, getattr(self, 'fault_threshold', 0.0), name="Fault Plane")
+            
+            # Replace the old interface boundaries with the newly shifted ones
+            plotter.remove_actor(interface_actor)
             if new_interfaces.n_points > 0:
                 interface_actor = plotter.add_mesh(new_interfaces, color="white", opacity=0.7)
 
-
             return
 
-        # Add Slider
+        # Adding time slider
         plotter.add_slider_widget(on_slider_change, [t_min, t_max], 
-                                  title=f"T Evolution",
-                                  pointa=(0.65, 0.90), # start of slider
-                                  pointb=(0.95, 0.90), # end of slider
+                                  title=f"time evolution",
+                                  pointa=(0.65, 0.90),
+                                  pointb=(0.95, 0.90),
                                   color="black")
         
         print(f"Opening Interactive Plot. Use the slider to change T dimension...")
+        bounds = vol_grid.bounds
+        plotter.show_grid(bounds=bounds)
         plotter.show()
 
 def main():        
-    
+
 
     ############### CHECKING BASIS FUNCION IMPLEMENTATION ################
 
-    ################## EXAMPLE - 3 : Flattening two folds (more gradient info)
-    # OBSERVATION - Trade-off between both basis and covariance ###############
-
-    ## OBSERVATION -  After some time t =4-5 the structure starts to move in oppositse sense of direction is it due to the
-    #### t^2, z^2, x^2, etc term in basis polynomial (parabola/quadratic behaviour)?
-
-    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.5],dtype=torch.float32))
+    ### EXAMPLE - 2 -- Dataset from Jan Models - model3 -- Simple recumbent fold to check how basis fits it
+    ### OBSERVATION - (Trade-off between both basis and covariance) + (basis captures some info from parabola/quadratic equation)
+    
+    Transformation_matrix = torch.diag(torch.tensor([1,1,1,0.005],dtype=torch.float32))
     gp = Gempy("Gempy_test", 
-               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, -0.5, 5],
+               extent=[-0.2, 1.2, -0.2, 1.2, -0.2, 1.2, 0, 0.4],
                 resolution=[100, 20, 100, 2]
                )
     
     interface_data = {
-        "Fold 1": torch.tensor([
-            [500.0, 500.0, 620.0, 0.0],  # Hinge
-            [300.0, 1200.0, 500.0, 0.0],  # Left Steep
-            [700.0, 1200.0, 500.0, 0.0],  # Right Steep
-            [200.0, 900.0, 400.0, 0.0],  # Left Mid
-            [800.0, 900.0, 400.0, 0.0],  # Right Mid
-            [100.0, 500.0, 300.0, 0.0],  # Left Lower
-            [900.0, 500.0, 300.0, 0.0],  # Right Lower
-            [0.0,   100.0, 200.0, 0.0],  # Left Edge
-            [1000.0,100.0, 200.0, 0.0]   # Right Edge
-        ]) / 1000,
-
-        "Fold 2": torch.tensor([
-            # Shifted UP by 200m (Z + 200)
-            [500.0, 500.0, 820.0, 0.0],  # Hinge
-            [300.0, 1200.0, 700.0, 0.0],
-            [700.0, 1200.0, 700.0, 0.0],
-            [200.0, 900.0, 600.0, 0.0],
-            [800.0, 900.0, 600.0, 0.0],
-            [100.0, 500.0, 500.0, 0.0],
-            [900.0, 500.0, 500.0, 0.0],
-            [0.0,   100.0, 400.0, 0.0],
-            [1000.0,100.0, 400.0, 0.0]
-        ]) / 1000
+        "rock1": torch.tensor([
+            # --- Y=0.2 Slice ---
+            [0.000, 0.200, 0.800, 0.0],
+            [0.000, 0.200, 0.200, 0.0],
+            [0.100, 0.200, 0.790, 0.0],
+            [0.100, 0.200, 0.210, 0.0],
+            [0.200, 0.200, 0.780, 0.0],
+            [0.200, 0.200, 0.220, 0.0],
+            [0.300, 0.200, 0.770, 0.0],
+            [0.300, 0.200, 0.230, 0.0],
+            [0.400, 0.200, 0.760, 0.0],
+            [0.400, 0.200, 0.240, 0.0],
+            [0.700, 0.200, 0.500, 0.0],
+            
+            # --- Y=0.0 Slice ---
+            [0.000, 0.000, 0.800, 0.0],
+            [0.000, 0.000, 0.200, 0.0],
+            [0.100, 0.000, 0.790, 0.0],
+            [0.100, 0.000, 0.210, 0.0],
+            [0.200, 0.000, 0.780, 0.0],
+            [0.200, 0.000, 0.220, 0.0],
+            [0.300, 0.000, 0.770, 0.0],
+            [0.300, 0.000, 0.230, 0.0],
+            [0.400, 0.000, 0.760, 0.0],
+            [0.400, 0.000, 0.240, 0.0],
+            [0.700, 0.000, 0.500, 0.0],
+            
+            # --- Y=0.5 Slice (Center) ---
+            [0.000, 0.500, 0.800, 0.0],
+            [0.000, 0.500, 0.200, 0.0],
+            [0.100, 0.500, 0.790, 0.0],
+            [0.100, 0.500, 0.210, 0.0],
+            [0.200, 0.500, 0.780, 0.0],
+            [0.200, 0.500, 0.220, 0.0],
+            [0.300, 0.500, 0.770, 0.0],
+            [0.300, 0.500, 0.230, 0.0],
+            [0.400, 0.500, 0.760, 0.0],
+            [0.400, 0.500, 0.240, 0.0],
+            [0.700, 0.500, 0.500, 0.0],
+            
+            # --- Y=1.0 Slice ---
+            [0.000, 1.000, 0.800, 0.0],
+            [0.000, 1.000, 0.200, 0.0],
+            [0.100, 1.000, 0.790, 0.0],
+            [0.100, 1.000, 0.210, 0.0],
+            [0.200, 1.000, 0.780, 0.0],
+            [0.200, 1.000, 0.220, 0.0],
+            [0.300, 1.000, 0.770, 0.0],
+            [0.300, 1.000, 0.230, 0.0],
+            [0.400, 1.000, 0.760, 0.0],
+            [0.400, 1.000, 0.240, 0.0],
+            [0.700, 1.000, 0.500, 0.0],
+            
+            # --- Y=0.8 Slice ---
+            [0.700, 0.800, 0.500, 0.0],
+            [0.000, 0.800, 0.800, 0.0],
+            [0.000, 0.800, 0.200, 0.0],
+            [0.100, 0.800, 0.790, 0.0],
+            [0.100, 0.800, 0.210, 0.0],
+            [0.200, 0.800, 0.780, 0.0],
+            [0.200, 0.800, 0.220, 0.0],
+            [0.300, 0.800, 0.770, 0.0],
+            [0.300, 0.800, 0.230, 0.0],
+            [0.400, 0.800, 0.760, 0.0],
+            [0.400, 0.800, 0.240, 0.0]
+        ]),
+        
+        # --- Rock 2 (Inner Core) ---
+        "rock2": torch.tensor([
+             # --- Y=0.2 Slice ---
+            [0.000, 0.200, 0.600, 0.0],
+            [0.000, 0.200, 0.400, 0.0],
+            [0.100, 0.200, 0.590, 0.0],
+            [0.100, 0.200, 0.410, 0.0],
+            [0.200, 0.200, 0.580, 0.0],
+            [0.200, 0.200, 0.420, 0.0],
+            [0.300, 0.200, 0.570, 0.0],
+            [0.300, 0.200, 0.430, 0.0],
+            [0.400, 0.200, 0.560, 0.0],
+            [0.400, 0.200, 0.440, 0.0],
+            
+             # --- Y=0.0 Slice ---
+            [0.000, 0.000, 0.600, 0.0],
+            [0.000, 0.000, 0.400, 0.0],
+            [0.100, 0.000, 0.590, 0.0],
+            [0.100, 0.000, 0.410, 0.0],
+            [0.200, 0.000, 0.580, 0.0],
+            [0.200, 0.000, 0.420, 0.0],
+            [0.300, 0.000, 0.570, 0.0],
+            [0.300, 0.000, 0.430, 0.0],
+            [0.400, 0.000, 0.560, 0.0],
+            [0.400, 0.000, 0.440, 0.0],
+            
+             # --- Y=0.5 Slice ---
+            [0.000, 0.500, 0.600, 0.0],
+            [0.000, 0.500, 0.400, 0.0],
+            [0.100, 0.500, 0.590, 0.0],
+            [0.100, 0.500, 0.410, 0.0],
+            [0.200, 0.500, 0.580, 0.0],
+            [0.200, 0.500, 0.420, 0.0],
+            [0.300, 0.500, 0.570, 0.0],
+            [0.300, 0.500, 0.430, 0.0],
+            [0.400, 0.500, 0.560, 0.0],
+            [0.400, 0.500, 0.440, 0.0],
+            
+             # --- Y=1.0 Slice ---
+            [0.000, 1.000, 0.600, 0.0],
+            [0.000, 1.000, 0.400, 0.0],
+            [0.100, 1.000, 0.590, 0.0],
+            [0.100, 1.000, 0.410, 0.0],
+            [0.200, 1.000, 0.580, 0.0],
+            [0.200, 1.000, 0.420, 0.0],
+            [0.300, 1.000, 0.570, 0.0],
+            [0.300, 1.000, 0.430, 0.0],
+            [0.400, 1.000, 0.560, 0.0],
+            [0.400, 1.000, 0.440, 0.0],
+            
+             # --- Y=0.8 Slice ---
+            [0.000, 0.800, 0.600, 0.0],
+            [0.000, 0.800, 0.400, 0.0],
+            [0.100, 0.800, 0.590, 0.0],
+            [0.100, 0.800, 0.410, 0.0],
+            [0.200, 0.800, 0.580, 0.0],
+            [0.200, 0.800, 0.420, 0.0],
+            [0.300, 0.800, 0.570, 0.0],
+            [0.300, 0.800, 0.430, 0.0],
+            [0.400, 0.800, 0.560, 0.0],
+            [0.400, 0.800, 0.440, 0.0]
+        ])
     }
 
     orientation_data = {
         "Positions": torch.tensor([
-            # --- Fold 1 (Bottom) ---
-            [500.0, 500.0, 620.0, 100],    # Hinge
-            
-            [300.0, 500.0, 500.0, 0],    # Left Steep
-            [700.0, 500.0, 500.0, 0],    # Right Steep
-
-            [200.0, 500.0, 400.0, 0],    # Left Mid
-            [800.0, 500.0, 400.0, 0],    # Right Mid
-
-            [100.0, 500.0, 300.0, 0],    # Left Lower
-            [900.0, 500.0, 300.0, 0],    # Right Lower
-
-            [0.0,   500.0, 200.0, 0],    # Left Edge
-            [1000.0,500.0, 200.0, 0],    # Right Edge
-            
-            # --- Fold 2 (Top) ---
-            # Identical X, Shifted Z (+200)
-            [500.0, 500.0, 820.0, 0], 
-            
-            [300.0, 500.0, 700.0, 0],
-            [700.0, 500.0, 700.0, 0],
-
-            [200.0, 500.0, 600.0, 0],
-            [800.0, 500.0, 600.0, 0],
-
-            [100.0, 500.0, 500.0, 0],
-            [900.0, 500.0, 500.0, 0],
-
-            [0.0,   500.0, 400.0, 0],
-            [1000.0,500.0, 400.0, 0]
-
-        ]) / 1000,
-
+            [0.200, 0.500, 0.780, 0.1],  # Upper Overturned Limb
+            [0.200, 0.500, 0.220, 0.0]   # Lower Upright Limb
+        ]),
+        
         "Values": torch.tensor([
-            # --- Fold 1 Gradients ---
-            [0.0,    0.0, 1.0,   0.30],  # Hinge (Flat)
-            
-            [-0.866, 0.0, 0.5,   0.25],  # Left Steep (60 deg)
-            [ 0.866, 0.0, 0.5,   0.25],  # Right Steep
-            
-            [-0.707, 0.0, 0.707, 0.20],  # Left Mid (45 deg)
-            [ 0.707, 0.0, 0.707, 0.20],  # Right Mid
-            
-            [-0.5,   0.0, 0.866, 0.15],  # Left Lower (30 deg)
-            [ 0.5,   0.0, 0.866, 0.15],  # Right Lower
-            
-            [-0.174, 0.0, 0.985, 0.10],  # Left Edge (10 deg)
-            [ 0.174, 0.0, 0.985, 0.10],  # Right Edge
-
-            # --- Fold 2 Gradients (Identical to Fold 1) ---
-            [0.0,    0.0, 1.0,   0.30],  
-            
-            [-0.866, 0.0, 0.5,   0.25],  
-            [ 0.866, 0.0, 0.5,   0.25],  
-            
-            [-0.707, 0.0, 0.707, 0.20],  
-            [ 0.707, 0.0, 0.707, 0.20], 
-            
-            [-0.5,   0.0, 0.866, 0.15],  
-            [ 0.5,   0.0, 0.866, 0.15],  
-            
-            [-0.174, 0.0, 0.985, 0.10],  
-            [ 0.174, 0.0, 0.985, 0.10]   
+            # Overturned Limb (Normal pointing DOWN -Z)
+            [-0.0998, 0.0000, -0.9950, 0.0001], 
+            # Upright Limb (Normal pointing UP +Z)
+            [-0.0998, 0.0000, 0.9950, 0.0001]
         ])
     }
+    
 
     gp.interface_data(interface_data)
     gp.orientation_data(orientation_data)
     gp.interpolation_options()
     gp.interpolation_options_set(Transformation_matrix=Transformation_matrix)
-    # custom_data = torch.tensor([[40,20,30,0]], dtype=torch.float32)
+    custom_data = torch.tensor([[4,2,3]], dtype=torch.float32)
 
-    # gp.activate_custom_grid(custom_grid_data=custom_data)
+    gp.activate_custom_grid(custom_grid_data=custom_data)
     #gp.active_grid()
     #gp.deactivate_grid("Regular")
     sol = gp.Solution()
@@ -1358,15 +1409,15 @@ def main():
     #########################################################################
 
     ##### FOR 2D matplotlib #####
-    import time
-    for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
-        gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
-        time.sleep(1)
+    # import time
+    # for t in [0, 0.1, 0.2, .3, 0.4, 0.5]:
+    #     gp.plot_data_section(section={2:0.5, 4:t}, plot_scalar_field = True, plot_input_data=True)
+    #     time.sleep(1)
 
 
     ##### FOR 3D matplotlib #####
     # import time
-    # for t in [-0.5, 0, 0.5, .75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3, 3.5, 4,4.5]:
+    # for t in [0, 0.1, 0.2, .3, 0.4, 0.5]:
     #     gp.plot_data_section(section={4:t}, plot_scalar_field = True, plot_input_data=True)
     #     time.sleep(1)
 
@@ -1380,8 +1431,8 @@ def main():
     ########### show/unshow surface or interfaces using "only_surface_mode" argument
     ###############################################################
 
-    # print("\nStarting Interactive Visualization...")
-    # gp.plot_interactive_section(plot_input_data = True, only_surface_mode = True)
+    print("\nStarting Interactive Visualization...")
+    gp.plot_interactive_section(plot_input_data = True, only_surface_mode = False)
 
     
 if __name__ == "__main__":
