@@ -3,8 +3,8 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-# Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
-from withbasisfunction import Gempy
+# Import Gempy class from pyvista_gempy_local_anisotropy.py or with_universal_basis_term.py(with universal term)
+from with_universal_basis_term import Gempy
 
 class GempyFaultModel(Gempy):
     """
@@ -233,6 +233,11 @@ class GempyFaultModel(Gempy):
             fault_out, _ = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
             fault_scalars = fault_out["Regular"]
 
+            #### For Fault-plane(3D) and Fault-line(2D) plotting
+            # Save the fault scalar field for plotting
+            self.current_fault_z = fault_scalars.clone()
+            ####
+
             hw_mask = fault_scalars > self.fault_threshold
             
             # For storing values
@@ -253,24 +258,13 @@ class GempyFaultModel(Gempy):
                 # Calculating scalar field on whole grid using foot wall model weights
                 struct_out_fw, struct_res_fw = super().Solution_grid(grid_coord, section_plot=True, recompute_weights=False)
 
-
-            ###########
-            #### SCALAR FIELD NORMALIZATION (Aligning the two blocks)
-        
-            if struct_out_hw is not None and struct_out_fw is not None:
-                # Calculating average scalar value of the geological interfaces in both blocks
-                hw_ref_mean = torch.mean(struct_out_hw['scalar_ref_points'])
-                fw_ref_mean = torch.mean(struct_out_fw['scalar_ref_points'])
-                
-                # Calculate the difference between their averages
-                scalar_shift = hw_ref_mean - fw_ref_mean
-                
-                # Apply this shift to the entire Footwall scalar field and its reference points
-                struct_out_fw['Regular'] = struct_out_fw['Regular'] + scalar_shift
-                struct_out_fw['scalar_ref_points'] = struct_out_fw['scalar_ref_points'] + scalar_shift
-                
-                # print(f"Normalizing Footwall by shifting scalar field by: {scalar_shift.item()}")
-                
+            #### For plotting separate(original) scalar fields for each block
+            # Save the raw scalar fields and mask for plotting
+            self.raw_hw_scalar = struct_out_hw["Regular"].clone()
+            self.raw_fw_scalar = struct_out_fw["Regular"].clone()
+            self.raw_hw_mask = hw_mask.clone()
+            ####
+           
             # IMPORTANT: Stitch Outputs based on Fault Mask
             final_out = {}
             final_res = {}
@@ -278,6 +272,7 @@ class GempyFaultModel(Gempy):
             if struct_out_hw is not None and struct_out_fw is not None:
                 for k in struct_out_hw.keys():
                     if k == 'scalar_ref_points':
+
                         # Reference points used for assigning contour colors
                         final_out[k] = struct_out_hw[k]
                     else:
@@ -286,6 +281,7 @@ class GempyFaultModel(Gempy):
                         
                 for k in struct_res_hw.keys():
                     if k == 'ref_points':
+
                         final_res[k] = struct_res_hw[k]
                     else:
                         final_res[k] = torch.where(hw_mask, struct_res_hw[k], struct_res_fw[k])
@@ -339,24 +335,13 @@ if __name__ == "__main__":
                                     [400.0, 500.0, 800.0, 0],
                                    [700.0, 500.0, 200, 0],
 
-
-                        # For rotation in X-Y plane section
-                                    [400.0, 800.0, 800.0, 0],
-
-                                    [400.0, 200.0, 800.0, 0],
                                    
                                    ]) / 1000,
 
         "Values": torch.tensor([[0.894, 0, 0.447, 0],
                                 
-                                [0.894, 0.000, 0.447, 0.1],
                                 [0.894, 0.000, 0.447, -0.1],
-
-                        # For rotation in X-Y plane section
-
-                                [0.9, 0.0, 0, 0.1],
-
-                                [0.9, 0.0, 0, -0.1],
+                                [0.894, 0.000, 0.447, 0.1],
                                 
                                 ])
     }

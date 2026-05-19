@@ -762,8 +762,8 @@ class Gempy(grid):
                     # Only draw if the block actually exists in this 2D slice
                     if not np.isnan(Z_masked).all():
                         cmap = cmaps[cmap_idx % len(cmaps)]
-                        # contours_block = plt.contour(X, Y, Z_masked, levels=15, cmap=cmap)
-                        # plt.clabel(contours_block, inline=True, fontsize=8)
+                        contours_block = plt.contour(X, Y, Z_masked, levels=15, cmap=cmap)
+                        plt.clabel(contours_block, inline=True, fontsize=8)
                         cmap_idx += 1
 
             # Plot independent raw scalar fields for single fault 
@@ -778,18 +778,18 @@ class Gempy(grid):
                 Z_fw_masked = np.where(mask == 0, Z_fw, np.nan)
 
                 # Plot Hanging Wall Contours (using a Blue colormap)
-                # contours_hw = plt.contour(X, Y, Z_hw_masked, levels=5, cmap='magma')
-                # plt.clabel(contours_hw, inline=True, fontsize=8)
+                contours_hw = plt.contour(X, Y, Z_hw_masked, levels=5, cmap='magma')
+                plt.clabel(contours_hw, inline=True, fontsize=8)
 
                 # Plot Foot Wall Contours (using an Orange colormap)
-                # contours_fw = plt.contour(X, Y, Z_fw_masked, levels=5, cmap='bone')
-                # plt.clabel(contours_fw, inline=True, fontsize=8)
+                contours_fw = plt.contour(X, Y, Z_fw_masked, levels=5, cmap='bone')
+                plt.clabel(contours_fw, inline=True, fontsize=8)
                     
             else:
                 # Fallback to the standard single merged field
                 Z = sclar_field.reshape(X.shape).numpy()
                 contours = plt.contour(X, Y, Z, levels=10, cmap='plasma',linewidths=2.)
-                # plt.clabel(contours, inline=True, fontsize=8, colors='black')
+                plt.clabel(contours, inline=True, fontsize=8, colors='black')
             ####
 
         #### For Fault line(2D) plotting

@@ -5,8 +5,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import os
 
-# Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
-from withbasisfunction import Gempy
+# Import Gempy class from pyvista_gempy_local_anisotropy.py or with_universal_basis_term.py(with universal term)
+from with_universal_basis_term import Gempy
 
 class GempyMultiFaultModel(Gempy):
     """

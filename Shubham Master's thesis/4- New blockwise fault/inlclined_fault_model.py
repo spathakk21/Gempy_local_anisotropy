@@ -3,8 +3,8 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-# Import Gempy class from pyvista_new.py or withbasisfunction.py(with universal term)
-from withbasisfunction import Gempy
+# Import Gempy class from pyvista_gempy_local_anisotropy.py or with_universal_basis_term.py(with universal term)
+from with_universal_basis_term import Gempy
 
 class GempyFaultModel(Gempy):
     """
